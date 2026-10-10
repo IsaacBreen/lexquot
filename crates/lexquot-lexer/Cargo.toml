@@ -1,0 +1,25 @@
+[package]
+name = "lexquot-lexer"
+version = "0.1.1"
+edition = "2024"
+description = "Lexer and tokenizer automata used by GLRMask"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/IsaacBreen/lexquot"
+
+[features]
+default = []
+internal-api = []
+
+[dependencies]
+bincode = "1"
+lexquot-finite-automata = { version = "=0.1.1", path = "../lexquot-finite-automata" }
+lexquot-vocab = { version = "=0.1.1", path = "../lexquot-vocab", features = ["internal-api"] }
+rayon = "1"
+range-set-blaze = "0.3.0"
+regex-syntax = "0.8"
+rustc-hash = "1"
+serde = { version = "1", features = ["derive", "rc"] }
+smallvec = { version = "1", features = ["serde"] }
+
+[dev-dependencies]
+rand = "0.8"

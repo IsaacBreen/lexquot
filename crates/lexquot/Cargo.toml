@@ -1,0 +1,29 @@
+[package]
+name = "lexquot"
+version = "0.1.0"
+edition = "2024"
+description = "Scoped vocabulary and lexer-state equivalence with projected terminal residuals"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/IsaacBreen/lexquot"
+readme = "README.md"
+
+[features]
+default = []
+internal-api = []
+
+[dependencies]
+lexquot-finite-automata = { version = "=0.1.1", path = "../lexquot-finite-automata" }
+lexquot-lexer = { version = "=0.1.1", path = "../lexquot-lexer", features = ["internal-api"] }
+lexquot-vocab = { version = "=0.1.1", path = "../lexquot-vocab", features = ["internal-api"] }
+lexquot-invariant = { version = "=0.1.1", path = "../lexquot-invariant", features = ["internal-api"] }
+ahash = "0.8"
+hashbrown = "0.15"
+once_cell = "1"
+rayon = "1"
+rustc-hash = "1"
+serde = { version = "1", features = ["derive", "rc"] }
+smallvec = "1"
+thiserror = "1"
+
+[dev-dependencies]
+serde_json = "1"
