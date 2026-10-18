@@ -6,6 +6,17 @@ LexQuot is an independently named Rust library and small workspace, extracted fr
 
 The main Rust package is [`lexquot`](crates/lexquot/README.md), with four support crates vendored into this workspace under `crates/`.
 
+## Exact all-completion vocabulary analysis
+
+The additional `lexquot::trace` API computes collision-free vocabulary classes
+from projected Boolean terminal residuals, preserving all completion positions
+and (by default) unfinished-terminal right languages. Its stronger substitution
+contract is distinct from the original observation-scoped L1/L2P interfaces.
+See [the trace guide](crates/lexquot/TRACE_GUIDE.md) for semantics, limitations,
+resource controls, and a minimal example. The `token_effect` module supplies a
+structural-refinement alternative and a symbolic single-byte-class-run special
+case. Neither new vocabulary interface computes an initial-state quotient.
+
 ## Main ideas
 
 - **L1**: single-terminal live-prefix behavior, Boolean terminal residuals, retained raw-state projections, and reverse-preimage algorithms.

@@ -10,6 +10,10 @@ It does **not** contain a parser, a Terminal DWA compiler, or a runtime mask eng
 
 This is a tested research release candidate, not a published crates.io release. The manuscript and raw research measurements are maintained in a separate private repository during author review. This public workspace includes four local supporting crates. crates.io publication requires a separate release decision.
 
+For the separate stronger, all-completion vocabulary interface, see the
+[trace guide](TRACE_GUIDE.md). Its substitution guarantee must not be inferred
+for the historical L1/L2P modes described below.
+
 ## The three distinctions that matter
 
 **Vocabulary partitioning is not equivalence.** Restricting the token domain can collapse initial-state rows, but does not on its own change equality of two retained token columns on the same state/terminal observation domain. Extra token merging requires a restricted observation, such as a selected terminal family or initial-state set.
