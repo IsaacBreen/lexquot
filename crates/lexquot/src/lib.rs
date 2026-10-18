@@ -87,3 +87,7 @@ pub mod token_effect;
 pub use partition::{PartitionSpec, PartitionedRequest, PartitionedAnalysis};
 pub use api::{Analysis, AnalysisRequest, AnalysisError, AnalysisStats, Assurance, Backend, Budget, Domain, Observation, refine_token_partitions, verify_refinement};
 pub use residual::{ProjectedRoot, ResidualDfa, ResidualRequest, ResidualAnalysis, ResidualStats, PreparedResiduals};
+
+/// Exact all-completion trace observers. This API is distinct from the inherited
+/// L1/L2P latest-completion contract and computes vocabulary classes only.
+pub mod trace;
