@@ -4,9 +4,9 @@
 use lexquot::trace::{
     EndpointPolicy, PrepareOptions, PreparedTrace, TraceAlgorithm, TraceBudget, TraceDfa,
 };
-use lexquot::{parse_regex, Expr, Vocab};
+use lexquot::{Expr, Vocab, parse_regex};
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use std::error::Error;
 use std::io::Write;
@@ -87,6 +87,7 @@ fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     let minimize = opt("--minimize", "true") == "true";
     let share = opt("--share", "true") == "true";
     let cache = opt("--cache", "true") == "true";
+    let prepare_each = opt("--prepare-each", "true") == "true";
     let byte_classes = opt("--byte-classes", "true") == "true";
     if repeat == 0 || threads == 0 {
         return Err("repeat and threads must be positive".into());
@@ -189,10 +190,27 @@ fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         prepared.stats().preparation_ms
     );
     for repetition in 0..repeat {
+        // A fresh-compilation trial includes real automaton preparation, rather
+        // than adding one cached preparation time to unrelated warm samples.
+        let fresh = if repetition > 0 && prepare_each {
+            Some(pool.install(|| {
+                PreparedTrace::new(
+                    &terminals,
+                    PrepareOptions {
+                        minimize,
+                        share_across_terminals: share,
+                        budget,
+                    },
+                )
+            })?)
+        } else {
+            None
+        };
+        let current = fresh.as_ref().unwrap_or(&prepared);
         eprintln!("phase=analysis_start repetition={repetition}");
         let started = Instant::now();
         let result = pool.install(|| {
-            prepared
+            current
                 .request(&vocabulary)
                 .endpoint(endpoint)
                 .algorithm(algorithm)
@@ -204,7 +222,10 @@ fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         let analysis_ms = started.elapsed().as_secs_f64() * 1000.0;
         match result {
             Ok(result) => {
-                eprintln!("phase=analysis_complete repetition={repetition} ms={analysis_ms:.3} classes={}", result.nondead_class_count());
+                eprintln!(
+                    "phase=analysis_complete repetition={repetition} ms={analysis_ms:.3} classes={}",
+                    result.nondead_class_count()
+                );
                 let mut class_sizes = result
                     .classes
                     .iter()
@@ -217,11 +238,12 @@ fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
                 let record = json!({
                     "status":"ok", "case":case.name, "source":case.source, "algorithm":mode, "policy":policy,
                     "repetition":repetition,"first_invocation":repetition==0,
-                    "cache_lifetime":"fresh trace and reverse caches per invocation; prepared DFA reused",
+                    "cache_lifetime":if prepare_each { "fresh terminal preparation, trace and reverse caches per invocation" } else { "fresh trace and reverse caches per invocation; prepared DFA reused" },
+                    "prepare_each":prepare_each,
                     "threads":threads,"minimize":minimize,"share":share,"cache":cache,"byte_classes":byte_classes,
                     "tokens":count,"source_vocab_entries":original_count,"max_token_bytes":max_bytes,"selection_seed":7,
                     "vocabulary_io_ms":vocabulary_io_ms,"terminal_dfa_ms":terminal_dfa_ms,
-                    "preparation":prepared.stats(),"analysis_ms":analysis_ms,"stats":result.stats,
+                    "preparation":current.stats(),"analysis_ms":analysis_ms,"construction_ms":current.stats().preparation_ms + analysis_ms,"stats":result.stats,
                     "classes_including_dead":result.classes.len(),"nondead_classes":result.nondead_class_count(),
                     "dead_tokens":result.dead_class.map_or(0,|c|result.classes[c as usize].len()),"class_sizes":class_sizes,
                     "budget":budget,"state_quotient_computed":false,
@@ -239,7 +261,7 @@ fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
                 writeln!(
                     stdout,
                     "{}",
-                    json!({"status":"error","phase":"analysis","case":case.name,"algorithm":mode,"policy":policy,"repetition":repetition,"tokens":count,"error":error.to_string(),"elapsed_ms":analysis_ms,"preparation":prepared.stats()})
+                    json!({"status":"error","phase":"analysis","case":case.name,"algorithm":mode,"policy":policy,"repetition":repetition,"tokens":count,"error":error.to_string(),"elapsed_ms":analysis_ms,"preparation":current.stats()})
                 )?;
                 stdout.flush()?;
                 return Err(error.into());

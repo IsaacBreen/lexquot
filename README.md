@@ -26,6 +26,28 @@ case. Neither new vocabulary interface computes an initial-state quotient.
 
 A vocabulary partition is not an equivalence class. An initial-state quotient is valid only for the observation supplied, not for arbitrary lexer byte transitions or token replacement during a grammar commit. The inherited optimized L2P implementation uses fingerprints unless canonically verified; the default L2P API uses collision-free structural keys.
 
+## All-completion vocabulary equivalence
+
+The `lexquot::trace` interface retains every positive terminal completion and the
+right language of any unfinished terminal. Boolean projected first-terminal
+residuals share structure across terminals, while reset continuations retain
+terminal labels. Canonical finite trace languages and exact reverse-column
+interning avoid unchecked hash-equality decisions. This vocabulary-only path
+does not compute a lexer-initial-state quotient.
+
+Under ordinary CFG substitution of the supplied regular terminal languages,
+`EndpointPolicy::Residual` supports grammar-representative substitution. Scanner
+priorities, maximal munch, semantic predicates and other host policies require a
+separate proof or a stronger observer. `EndpointPolicy::Mask` is weaker and must
+commit original bytes. Neither computes the coarsest fixed-grammar congruence.
+
+`token_effect` provides the complementary forward structural implementation,
+partition-local factoring and an exact symbolic single-byte-class repetition
+special case. The latter does not justify truncating arbitrary bounded regexes.
+See the `trace_bench` example and independent `trace_equivalence`,
+`trace_contexts` and `token_effect` tests. This extension is qualified on Rust
+1.95.0; use that pinned toolchain for reproducing the current test run.
+
 ## Build and test
 
 ```sh
