@@ -74,21 +74,42 @@ impl TerminalAutomaton {
     /// Frontend allocation occurs before analysis budgets and must be bounded
     /// separately by a caller handling untrusted regular expressions.
     pub fn from_expr(expr: &crate::Expr) -> Result<Self, EffectError> {
+        Self::from_expr_with_empty_policy(expr, false)
+    }
+
+    /// Compile the nonempty part of a terminal language, `L(expr) \ {epsilon}`.
+    /// A fresh nonaccepting root preserves accepting revisits to the old root.
+    /// For substitution analysis this also covers grammars with nullable
+    /// terminals: replace each nullable terminal occurrence conceptually by a
+    /// grammar nonterminal choosing epsilon or its nonempty lexical part.
+    /// This is a language-preserving argument, not a longest-match policy.
+    pub fn from_expr_nonempty(expr: &crate::Expr) -> Result<Self, EffectError> {
+        Self::from_expr_with_empty_policy(expr, true)
+    }
+
+    fn from_expr_with_empty_policy(
+        expr: &crate::Expr,
+        remove_empty: bool,
+    ) -> Result<Self, EffectError> {
         let dfa = crate::automata::lexer::compile::compile_terminal_expr_dfa(expr);
         if dfa.has_epsilon_transitions() {
             return Err(EffectError::Invalid(
                 "terminal DFA must be deterministic and epsilon-free".into(),
             ));
         }
-        Self::new(
-            0,
-            (0..dfa.num_states())
-                .map(|s| dfa.finalizers(s as u32).contains(0))
-                .collect(),
-            (0..dfa.num_states())
-                .map(|s| dfa.transitions(s as u32).collect())
-                .collect(),
-        )
+        let mut accepting = (0..dfa.num_states())
+            .map(|s| dfa.finalizers(s as u32).contains(0))
+            .collect::<Vec<_>>();
+        let mut transitions = (0..dfa.num_states())
+            .map(|s| dfa.transitions(s as u32).collect())
+            .collect::<Vec<Vec<(u8, u32)>>>();
+        let mut start = 0;
+        if remove_empty && accepting.first() == Some(&true) {
+            start = accepting.len() as u32;
+            accepting.push(false);
+            transitions.push(transitions[0].clone());
+        }
+        Self::new(start, accepting, transitions)
     }
 }
 

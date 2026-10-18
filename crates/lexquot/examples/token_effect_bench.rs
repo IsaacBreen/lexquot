@@ -26,6 +26,8 @@ struct Input {
     #[serde(default)]
     symbolic_byte_run: Option<SymbolicByteRun>,
     #[serde(default)]
+    normalize_nullable_terminals: bool,
+    #[serde(default)]
     tokens: Vec<(u32, Vec<u8>)>,
     #[serde(default)]
     vocab_path: Option<String>,
@@ -77,24 +79,31 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
         return Ok(());
     }
+    let compile = |expr: &lexquot::Expr| {
+        if input.normalize_nullable_terminals {
+            TerminalAutomaton::from_expr_nonempty(expr)
+        } else {
+            TerminalAutomaton::from_expr(expr)
+        }
+    };
     let terminals = if let Some(path) = input.expressions_path {
         let expressions: Vec<lexquot::Expr> = serde_json::from_slice(&fs::read(path)?)?;
         expressions
             .iter()
-            .map(TerminalAutomaton::from_expr)
+            .map(compile)
             .collect::<Result<Vec<_>, _>>()?
     } else if input.automata.is_empty() {
         input
             .terminals
             .iter()
-            .map(|r| TerminalAutomaton::from_expr(&lexquot::parse_regex(r, false)))
+            .map(|r| compile(&lexquot::parse_regex(r, false)))
             .collect::<Result<Vec<_>, _>>()?
     } else {
         input.automata
     };
     let frontend_ms = frontend.elapsed().as_secs_f64() * 1000.0;
     emit(
-        &serde_json::json!({"event":"frontend","name":input.name,"vocab_load_ms":load_ms,"frontend_ms":frontend_ms,"vocabulary":tokens.len(),"terminal_count":terminals.len(),"options":input.options}),
+        &serde_json::json!({"event":"frontend","name":input.name,"vocab_load_ms":load_ms,"frontend_ms":frontend_ms,"vocabulary":tokens.len(),"terminal_count":terminals.len(),"nullable_normalization":input.normalize_nullable_terminals,"options":input.options}),
     )?;
     let mut previous = None;
     for repetition in 0..input.repeats {

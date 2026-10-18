@@ -56,7 +56,7 @@ fn accepts_sequence(ds: &[TerminalAutomaton], seq: &[usize], x: &[u8]) -> bool {
     for &t in seq {
         let mut next = BTreeSet::new();
         for &i in &reachable {
-            for j in i + 1..=x.len() {
+            for j in i..=x.len() {
                 if accepts_terminal(&ds[t], &x[i..j]) {
                     next.insert(j);
                 }
@@ -386,4 +386,69 @@ fn billion_run_bounds_are_symbolic_and_nullable_run_is_handled_explicitly() {
         .analyze(&tokens)
         .is_err()
     );
+}
+
+#[test]
+fn nullable_terminals_are_lifted_to_grammar_optionality_without_losing_revisits() {
+    let expressions = [
+        lexquot::parse_regex("[ab]*", false),
+        lexquot::parse_regex("c?", false),
+    ];
+    let original = expressions
+        .iter()
+        .map(|expr| {
+            let d =
+                lexquot_lexer::__private::automata::lexer::compile::compile_terminal_expr_dfa(expr);
+            TerminalAutomaton {
+                start: 0,
+                accepting: (0..d.num_states())
+                    .map(|q| d.finalizers(q as u32).contains(0))
+                    .collect(),
+                transitions: (0..d.num_states())
+                    .map(|q| d.transitions(q as u32).collect())
+                    .collect(),
+            }
+        })
+        .collect::<Vec<_>>();
+    let nonempty = expressions
+        .iter()
+        .map(TerminalAutomaton::from_expr_nonempty)
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    assert!(!accepts_terminal(&nonempty[0], b""));
+    assert!(accepts_terminal(&nonempty[0], b"a"));
+    assert!(accepts_terminal(&nonempty[0], b"ababa"));
+    let tokens = vocab(b"abc", 3);
+    let a = PreparedTokenEffects::new(&nonempty, EffectOptions::default())
+        .unwrap()
+        .analyze(&tokens)
+        .unwrap();
+    let mut contexts = vec![Vec::new()];
+    contexts.extend(vocab(b"abc", 2).into_iter().map(|(_, b)| b));
+    let sequences = vocab(&[0, 1], 3)
+        .into_iter()
+        .map(|(_, v)| v.into_iter().map(|x| x as usize).collect::<Vec<_>>())
+        .collect::<Vec<_>>();
+    let mut checked = 0;
+    for (i, (_, v)) in tokens.iter().enumerate() {
+        let u = &tokens[a.representatives[a.classes[i] as usize] as usize].1;
+        if v == u {
+            continue;
+        }
+        for w in &contexts {
+            for z in &contexts {
+                for seq in &sequences {
+                    assert_eq!(
+                        accepts_sequence(&original, seq, &[w.as_slice(), v, z.as_slice()].concat()),
+                        accepts_sequence(&original, seq, &[w.as_slice(), u, z.as_slice()].concat())
+                    );
+                    checked += 1;
+                }
+            }
+        }
+    }
+    assert!(checked > 1000);
+    let epsilon = TerminalAutomaton::from_expr_nonempty(&lexquot::Expr::U8Seq(Vec::new())).unwrap();
+    assert!(!accepts_terminal(&epsilon, b""));
+    assert!(!accepts_terminal(&epsilon, b"a"));
 }
