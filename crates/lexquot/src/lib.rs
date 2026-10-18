@@ -83,6 +83,7 @@ pub mod api;
 mod canonical;
 pub mod residual;
 pub mod partition;
+pub mod token_effect;
 pub use partition::{PartitionSpec, PartitionedRequest, PartitionedAnalysis};
 pub use api::{Analysis, AnalysisRequest, AnalysisError, AnalysisStats, Assurance, Backend, Budget, Domain, Observation, refine_token_partitions, verify_refinement};
 pub use residual::{ProjectedRoot, ResidualDfa, ResidualRequest, ResidualAnalysis, ResidualStats, PreparedResiduals};
