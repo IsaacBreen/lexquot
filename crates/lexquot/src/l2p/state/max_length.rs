@@ -48,10 +48,7 @@ fn canonical_singleton_pruning_enabled() -> bool {
 }
 
 #[inline]
-fn canonical_singleton_pruning_is_profitable(
-    state_count: usize,
-    singleton_states: usize,
-) -> bool {
+fn canonical_singleton_pruning_is_profitable(state_count: usize, singleton_states: usize) -> bool {
     // Counting block sizes and rebuilding the active-state order has a fixed
     // O(states) cost.  It pays only on the large finite-horizon quotients where
     // a material part of the partition is already permanently singleton.
@@ -373,9 +370,7 @@ fn refine_once_sorted_monotone(
         });
 
     order.clear();
-    order.extend(
-        (0..n).filter(|&state| block_sizes[prev_blocks[state] as usize] > 1),
-    );
+    order.extend((0..n).filter(|&state| block_sizes[prev_blocks[state] as usize] > 1));
     order.par_sort_unstable_by(|&left, &right| {
         prev_blocks[left]
             .cmp(&prev_blocks[right])
@@ -820,19 +815,19 @@ pub fn find_state_equivalence_classes_kbounded(
     let dfa = tokenizer.dfa();
     let active_bytes_started_at = profile_enabled.then(std::time::Instant::now);
     let active_bytes = active_byte_representatives(relevant_bytes, byte_to_class);
-    let active_bytes_ms = active_bytes_started_at
-        .map_or(0.0, |started| started.elapsed().as_secs_f64() * 1000.0);
+    let active_bytes_ms =
+        active_bytes_started_at.map_or(0.0, |started| started.elapsed().as_secs_f64() * 1000.0);
     let full_state_query = is_full_state_query(states, dfa.states.len());
     let compute_started_at = profile_enabled.then(std::time::Instant::now);
     let (blocks, block_count, iterations_run) =
         compute_kbounded_partition(dfa, k, active_groups, &active_bytes, full_state_query);
-    let compute_ms = compute_started_at
-        .map_or(0.0, |started| started.elapsed().as_secs_f64() * 1000.0);
+    let compute_ms =
+        compute_started_at.map_or(0.0, |started| started.elapsed().as_secs_f64() * 1000.0);
 
     let mapping_started_at = profile_enabled.then(std::time::Instant::now);
     let mapping = build_subset_mapping(states, &blocks);
-    let mapping_ms = mapping_started_at
-        .map_or(0.0, |started| started.elapsed().as_secs_f64() * 1000.0);
+    let mapping_ms =
+        mapping_started_at.map_or(0.0, |started| started.elapsed().as_secs_f64() * 1000.0);
 
     if let Some(total_started_at) = total_started_at {
         eprintln!(

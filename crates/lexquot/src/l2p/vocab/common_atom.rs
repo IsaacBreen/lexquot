@@ -69,10 +69,7 @@ impl CommonAtomPreclasses {
         self.classes.len()
     }
 
-    pub fn representative_tokens<'a, S: AsRef<[u8]>>(
-        &self,
-        tokens: &'a [S],
-    ) -> Vec<&'a [u8]> {
+    pub fn representative_tokens<'a, S: AsRef<[u8]>>(&self, tokens: &'a [S]) -> Vec<&'a [u8]> {
         self.classes
             .iter()
             .map(|class| tokens[class[0]].as_ref())
@@ -227,10 +224,8 @@ fn find_common_atom_family(active_exprs: &[(u32, Expr)]) -> Option<(Expr, Vec<Te
 }
 
 fn atom_is_nonnullable_prefix_free(atom: &Expr) -> bool {
-    let tokenizer = build_regex_monolithic(std::slice::from_ref(atom)).into_tokenizer(
-        1,
-        Some(Arc::from(vec![atom.clone()].into_boxed_slice())),
-    );
+    let tokenizer = build_regex_monolithic(std::slice::from_ref(atom))
+        .into_tokenizer(1, Some(Arc::from(vec![atom.clone()].into_boxed_slice())));
     if tokenizer.has_epsilon_transitions()
         || tokenizer
             .matched_terminals_iter(tokenizer.initial_state_id())
@@ -274,12 +269,9 @@ fn build_trace_machine(atom: Expr, shapes: Vec<TerminalShape>) -> Option<TraceMa
         min: 0,
         max: None,
     };
-    let tokenizer = build_regex_monolithic(std::slice::from_ref(&star_expr)).into_tokenizer(
-        1,
-        Some(Arc::from(vec![star_expr].into_boxed_slice())),
-    );
-    if tokenizer.has_epsilon_transitions()
-        || tokenizer.num_states() as usize > MAX_ATOM_STAR_STATES
+    let tokenizer = build_regex_monolithic(std::slice::from_ref(&star_expr))
+        .into_tokenizer(1, Some(Arc::from(vec![star_expr].into_boxed_slice())));
+    if tokenizer.has_epsilon_transitions() || tokenizer.num_states() as usize > MAX_ATOM_STAR_STATES
     {
         return None;
     }
@@ -517,12 +509,8 @@ fn root_observation(
     let mut future_terminals = SmallVec::<[u32; 8]>::new();
     let mut matches = SmallVec::<[(u32, usize); 8]>::new();
     for &shape in &machine.shapes {
-        let (longest_match, can_continue) = shape_root_observation(
-            shape,
-            input,
-            &unprefixed_run,
-            matching_prefix_run.as_ref(),
-        );
+        let (longest_match, can_continue) =
+            shape_root_observation(shape, input, &unprefixed_run, matching_prefix_run.as_ref());
         if can_continue {
             future_terminals.push(shape.terminal);
         }
@@ -581,10 +569,7 @@ fn root_semantic_id_at(
     semantic_id
 }
 
-fn classify_tokens_serial<S: AsRef<[u8]>>(
-    machine: &TraceMachine,
-    tokens: &[S],
-) -> Vec<Vec<usize>> {
+fn classify_tokens_serial<S: AsRef<[u8]>>(machine: &TraceMachine, tokens: &[S]) -> Vec<Vec<usize>> {
     let mut root_semantic_ids = FxHashMap::<SmallVec<[u32; 32]>, u32>::default();
     let mut root_semantic_by_suffix = FxHashMap::<Vec<u8>, u32>::default();
     let mut classes = FxHashMap::<Vec<u32>, Vec<usize>>::default();
@@ -647,8 +632,14 @@ fn classify_tokens_serial<S: AsRef<[u8]>>(
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
 enum CompactTraceEnd {
     Dead,
-    Suffix { suffix: u16, width: u8, at_end: bool },
-    Alive { state: u32 },
+    Suffix {
+        suffix: u16,
+        width: u8,
+        at_end: bool,
+    },
+    Alive {
+        state: u32,
+    },
 }
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
@@ -668,7 +659,11 @@ fn common_atom_fingerprint_trace(hash: &mut u64, trace: CompactTrace) {
     common_atom_fingerprint_mix(hash, trace.completion_positions);
     match trace.end {
         CompactTraceEnd::Dead => common_atom_fingerprint_mix(hash, 0),
-        CompactTraceEnd::Suffix { suffix, width, at_end } => {
+        CompactTraceEnd::Suffix {
+            suffix,
+            width,
+            at_end,
+        } => {
             common_atom_fingerprint_mix(hash, 1);
             common_atom_fingerprint_mix(
                 hash,
@@ -724,11 +719,7 @@ impl crate::vocab::VocabDerivedArtifact for PreparedCommonAtomSuffixView {}
 /// Propagate a prepared suffix universe through a token-subset vocabulary.
 /// `parent_entry_indices` is collected while the subset is materialized, so
 /// schema compilation does not need a second token-ID lookup pass.
-pub fn inherit_vocab_suffix_index(
-    parent: &Vocab,
-    child: &Vocab,
-    parent_entry_indices: Vec<usize>,
-) {
+pub fn inherit_vocab_suffix_index(parent: &Vocab, child: &Vocab, parent_entry_indices: Vec<usize>) {
     if let Some(index) = parent.vocab_derived_cache_get::<PreparedCommonAtomSuffixIndex>() {
         debug_assert_eq!(child.len(), parent_entry_indices.len());
         child.vocab_derived_cache_set(Arc::new(PreparedCommonAtomSuffixView {
@@ -945,9 +936,7 @@ struct PreparedSuffixContext<'a> {
 
 enum CommonAtomSuffixSource<'a> {
     Local(CommonAtomSuffixUniverse),
-    Prepared {
-        context: PreparedSuffixContext<'a>,
-    },
+    Prepared { context: PreparedSuffixContext<'a> },
 }
 
 fn classify_tokens_phased<S: AsRef<[u8]> + Sync>(
@@ -1050,7 +1039,11 @@ fn classify_tokens_phased<S: AsRef<[u8]> + Sync>(
                         CommonAtomSuffixSource::Prepared { context } => {
                             let (entry_index, offset) =
                                 context.index.all_tokens.representatives[id as usize];
-                            (context.index.token_bytes[entry_index].as_slice(), offset, entry_index)
+                            (
+                                context.index.token_bytes[entry_index].as_slice(),
+                                offset,
+                                entry_index,
+                            )
                         }
                     };
                     let suffix = &bytes[offset..];
@@ -1089,7 +1082,10 @@ fn classify_tokens_phased<S: AsRef<[u8]> + Sync>(
                     (id, Some(signature))
                 })
                 .collect::<Vec<_>>();
-            if raw_signatures.iter().any(|(_, signature)| signature.is_none()) {
+            if raw_signatures
+                .iter()
+                .any(|(_, signature)| signature.is_none())
+            {
                 return false;
             }
             for (id, signature) in raw_signatures {
@@ -1102,7 +1098,9 @@ fn classify_tokens_phased<S: AsRef<[u8]> + Sync>(
         true
     };
 
-    if cut_filtered_root && !run_root_pass(Some(&needed), &mut semantic_ids, &mut semantic_by_suffix) {
+    if cut_filtered_root
+        && !run_root_pass(Some(&needed), &mut semantic_ids, &mut semantic_by_suffix)
+    {
         // The shortcut is only valid when every continuation observed by a
         // candidate-cut suffix is itself candidate-cut-observable and therefore
         // already has a shorter semantic. If not, discard the partial result and
@@ -1110,9 +1108,17 @@ fn classify_tokens_phased<S: AsRef<[u8]> + Sync>(
         cut_filtered_fallback = true;
         semantic_ids.clear();
         semantic_by_suffix.fill(u32::MAX);
-        assert!(run_root_pass(None, &mut semantic_ids, &mut semantic_by_suffix));
+        assert!(run_root_pass(
+            None,
+            &mut semantic_ids,
+            &mut semantic_by_suffix
+        ));
     } else if !cut_filtered_root {
-        assert!(run_root_pass(None, &mut semantic_ids, &mut semantic_by_suffix));
+        assert!(run_root_pass(
+            None,
+            &mut semantic_ids,
+            &mut semantic_by_suffix
+        ));
     }
     let root_ms = root_started.elapsed().as_secs_f64() * 1000.0;
 
@@ -1170,9 +1176,10 @@ fn classify_tokens_phased<S: AsRef<[u8]> + Sync>(
                 for (fingerprint, bucket) in by_hash {
                     let mut collision_classes = Vec::<Vec<usize>>::new();
                     for index in bucket {
-                        if let Some(class) = collision_classes.iter_mut().find(|class| {
-                            partials[class[0]] == partials[index]
-                        }) {
+                        if let Some(class) = collision_classes
+                            .iter_mut()
+                            .find(|class| partials[class[0]] == partials[index])
+                        {
                             class.push(index);
                         } else {
                             collision_classes.push(vec![index]);
@@ -1191,9 +1198,10 @@ fn classify_tokens_phased<S: AsRef<[u8]> + Sync>(
         let mut merged = FxHashMap::<u64, Vec<Vec<usize>>>::default();
         for (fingerprint, class) in local_classes.into_iter().flatten() {
             let candidates = merged.entry(fingerprint).or_default();
-            if let Some(existing) = candidates.iter_mut().find(|existing| {
-                partials[existing[0]] == partials[class[0]]
-            }) {
+            if let Some(existing) = candidates
+                .iter_mut()
+                .find(|existing| partials[existing[0]] == partials[class[0]])
+            {
                 existing.extend(class);
             } else {
                 candidates.push(class);
@@ -1211,7 +1219,10 @@ fn classify_tokens_phased<S: AsRef<[u8]> + Sync>(
         let mut by_hash = FxHashMap::<u64, Vec<usize>>::default();
         by_hash.reserve(tokens.len() / 8);
         for (token_index, partial) in partials.iter().enumerate() {
-            by_hash.entry(partial.fingerprint).or_default().push(token_index);
+            by_hash
+                .entry(partial.fingerprint)
+                .or_default()
+                .push(token_index);
         }
         let mut classes = Vec::<Vec<usize>>::with_capacity(by_hash.len());
         for bucket in by_hash.into_values() {
@@ -1226,7 +1237,10 @@ fn classify_tokens_phased<S: AsRef<[u8]> + Sync>(
             }
             let mut exact = FxHashMap::<CommonAtomPartialTrace, Vec<usize>>::default();
             for index in bucket {
-                exact.entry(partials[index].clone()).or_default().push(index);
+                exact
+                    .entry(partials[index].clone())
+                    .or_default()
+                    .push(index);
             }
             classes.extend(exact.into_values());
         }
@@ -1238,9 +1252,19 @@ fn classify_tokens_phased<S: AsRef<[u8]> + Sync>(
     if profile {
         eprintln!(
             "[glrmask/profile][common_atom_phased] tokens={} suffixes={} semantics={} classes={} cut_filtered_root={} cut_filtered_suffixes={} cut_filtered_fallback={} parallel_group={} trace_ms={:.3} suffix_build_ms={:.3} root_ms={:.3} finish_ms={:.3} group_ms={:.3} total_ms={:.3}",
-            tokens.len(), suffix_count, semantic_ids.len(), classes.len(), cut_filtered_root,
-            cut_filtered_suffixes, cut_filtered_fallback, parallel_group,
-            trace_ms, suffix_build_ms, root_ms, finish_ms, group_ms,
+            tokens.len(),
+            suffix_count,
+            semantic_ids.len(),
+            classes.len(),
+            cut_filtered_root,
+            cut_filtered_suffixes,
+            cut_filtered_fallback,
+            parallel_group,
+            trace_ms,
+            suffix_build_ms,
+            root_ms,
+            finish_ms,
+            group_ms,
             total_started.elapsed().as_secs_f64() * 1000.0,
         );
     }
@@ -1252,8 +1276,7 @@ fn classify_tokens<S: AsRef<[u8]> + Sync>(
     tokens: &[S],
     prepared_suffixes: Option<PreparedSuffixContext<'_>>,
 ) -> Vec<Vec<usize>> {
-    let parallel_phased_forced =
-        std::env::var_os("LEXQUOT_COMMON_ATOM_PARALLEL_PHASED").is_some();
+    let parallel_phased_forced = std::env::var_os("LEXQUOT_COMMON_ATOM_PARALLEL_PHASED").is_some();
     if std::env::var_os("LEXQUOT_DISABLE_COMMON_ATOM_PARALLEL_PHASED").is_none()
         && rayon::current_num_threads() > 1
         && (parallel_phased_forced || tokens.len() >= 32_768)
@@ -1367,9 +1390,7 @@ mod tests {
 
     use crate::automata::lexer::compile::build_regex_monolithic;
     use crate::automata::regex::{byte, bytes, choice, repeat, seq};
-    use crate::l2p::compat::{
-        TokenizerView, compute_byte_classes,
-    };
+    use crate::l2p::compat::{TokenizerView, compute_byte_classes};
 
     fn tokenizer_for(exprs: Vec<Expr>) -> Tokenizer {
         build_regex_monolithic(&exprs).into_tokenizer(
@@ -1452,7 +1473,10 @@ mod tests {
                 for state in 0..tokenizer.num_states() {
                     let first_action = &exact_actions[state as usize * tokens.len() + first];
                     let action = &exact_actions[state as usize * tokens.len() + token];
-                    assert_eq!(action, first_action, "preclass merged unequal exact actions");
+                    assert_eq!(
+                        action, first_action,
+                        "preclass merged unequal exact actions"
+                    );
                 }
             }
         }
@@ -1461,10 +1485,7 @@ mod tests {
     #[test]
     fn common_atom_trace_rejects_non_prefix_free_atoms() {
         let atom = choice(vec![byte(b'a'), bytes(b"aa")]);
-        let exprs = vec![
-            repeat(atom.clone(), 0, Some(3)),
-            repeat(atom, 2, Some(2)),
-        ];
+        let exprs = vec![repeat(atom.clone(), 0, Some(3)), repeat(atom, 2, Some(2))];
         let tokenizer = tokenizer_for(exprs);
         let active = vec![true; 2];
         let tokens = vec![b"a".to_vec(); MIN_TOKENS];
@@ -1474,10 +1495,7 @@ mod tests {
     #[test]
     fn common_atom_trace_leaves_unbounded_families_on_generic_exact_path() {
         let atom = choice(vec![byte(b'a'), bytes(b"bc")]);
-        let exprs = vec![
-            repeat(atom.clone(), 0, None),
-            repeat(atom, 2, None),
-        ];
+        let exprs = vec![repeat(atom.clone(), 0, None), repeat(atom, 2, None)];
         let tokenizer = tokenizer_for(exprs);
         let active = vec![true; 2];
         let tokens = vec![b"abc".to_vec(); MIN_TOKENS];

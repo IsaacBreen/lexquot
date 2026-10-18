@@ -5,8 +5,8 @@ use std::sync::Arc;
 use rustc_hash::FxHashMap;
 
 use super::BuildInput;
-use crate::automata::lexer::tokenizer::SingletonEpsilonClosures;
 use crate::automata::lexer::Lexer;
+use crate::automata::lexer::tokenizer::SingletonEpsilonClosures;
 
 pub(super) const UNKNOWN: u32 = u32::MAX - 1;
 pub(super) const DEAD: u32 = u32::MAX;
@@ -33,8 +33,8 @@ impl<'a> Scanner<'a> {
             byte_slot[byte as usize] = slot as u16;
         }
         let transition_width = relevant_bytes.len();
-        let transition_capacity = (input.tokenizer.num_states() as usize)
-            .saturating_mul(transition_width);
+        let transition_capacity =
+            (input.tokenizer.num_states() as usize).saturating_mul(transition_width);
         Self {
             input,
             configs: Vec::new(),
@@ -58,10 +58,13 @@ impl<'a> Scanner<'a> {
 
     fn intern_signature(&mut self, signature: Vec<u32>) -> u32 {
         let next_signature = self.signatures.len() as u32;
-        *self.signature_ids.entry(signature.clone()).or_insert_with(|| {
-            self.signatures.push(signature);
-            next_signature
-        })
+        *self
+            .signature_ids
+            .entry(signature.clone())
+            .or_insert_with(|| {
+                self.signatures.push(signature);
+                next_signature
+            })
     }
 
     fn intern_singleton(&mut self, state: u32) -> u32 {
@@ -207,7 +210,10 @@ impl<'a> Scanner<'a> {
 
     #[inline]
     pub fn signature(&self, config: u32) -> u32 {
-        if config == DEAD { 0 } else { self.config_signature[config as usize] }
+        if config == DEAD {
+            0
+        } else {
+            self.config_signature[config as usize]
+        }
     }
 }
-

@@ -1,8 +1,8 @@
 use super::automata::Product;
-use super::language::{Languages, Node, EMPTY, END};
+use super::language::{EMPTY, END, Languages, Node};
 use super::{
-    limit, work, EndpointPolicy, TraceAlgorithm, TraceAnalysis, TraceBudget, TraceRequest,
-    TraceStats,
+    EndpointPolicy, TraceAlgorithm, TraceAnalysis, TraceBudget, TraceRequest, TraceStats, limit,
+    work,
 };
 use crate::AnalysisError;
 use rustc_hash::FxHashMap;

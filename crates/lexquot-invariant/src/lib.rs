@@ -29,11 +29,15 @@ fn catch_internal_invariant_message<T>(f: impl FnOnce() -> T) -> Result<T, Strin
 // unrelated application panics or returning a partial artifact.
 #[cfg(feature = "internal-api")]
 #[derive(Debug)]
-struct CompilationResourceLimit { message: String }
+struct CompilationResourceLimit {
+    message: String,
+}
 
 #[cfg(feature = "internal-api")]
 fn fail_compilation_resource_limit(message: impl Into<String>) -> ! {
-    std::panic::resume_unwind(Box::new(CompilationResourceLimit { message: message.into() }))
+    std::panic::resume_unwind(Box::new(CompilationResourceLimit {
+        message: message.into(),
+    }))
 }
 
 #[cfg(feature = "internal-api")]
@@ -78,7 +82,8 @@ mod resource_limit_tests {
         assert_eq!(catch_compilation_resource_limit(|| 42), Ok(42));
         let error = catch_compilation_resource_limit(|| -> () {
             fail_compilation_resource_limit("projection budget exhausted")
-        }).unwrap_err();
+        })
+        .unwrap_err();
         assert_eq!(error, "projection budget exhausted");
     }
 
@@ -86,7 +91,9 @@ mod resource_limit_tests {
     fn resource_unwind_runs_destructors() {
         struct DropMark<'a>(&'a Cell<bool>);
         impl Drop for DropMark<'_> {
-            fn drop(&mut self) { self.0.set(true); }
+            fn drop(&mut self) {
+                self.0.set(true);
+            }
         }
         let dropped = Cell::new(false);
         let _ = catch_compilation_resource_limit(|| -> () {
@@ -102,7 +109,8 @@ mod resource_limit_tests {
             let _ = catch_compilation_resource_limit(|| -> () {
                 std::panic::resume_unwind(Box::new(37_u32));
             });
-        }).unwrap_err();
+        })
+        .unwrap_err();
         assert_eq!(*outer.downcast::<u32>().unwrap(), 37);
     }
 

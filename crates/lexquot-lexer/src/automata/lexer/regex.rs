@@ -54,17 +54,22 @@ fn escaped_class_set(escaped: u8) -> Option<U8Set> {
     }
 }
 
-
 pub fn validate_regular_regex(pattern: &str) -> Result<(), String> {
     let input = pattern.as_bytes();
     let mut i = 0usize;
     let mut group_depth = 0usize;
     let mut can_quantify = false;
 
-    fn is_hex(b: u8) -> bool { b.is_ascii_hexdigit() }
+    fn is_hex(b: u8) -> bool {
+        b.is_ascii_hexdigit()
+    }
     fn require_hex(input: &[u8], start: usize, count: usize, kind: &str) -> Result<usize, String> {
-        let end = start.checked_add(count).ok_or_else(|| format!("invalid {kind} escape"))?;
-        let bytes = input.get(start..end).ok_or_else(|| format!("incomplete {kind} escape"))?;
+        let end = start
+            .checked_add(count)
+            .ok_or_else(|| format!("invalid {kind} escape"))?;
+        let bytes = input
+            .get(start..end)
+            .ok_or_else(|| format!("incomplete {kind} escape"))?;
         if !bytes.iter().all(|b| is_hex(*b)) {
             return Err(format!("invalid {kind} escape"));
         }
@@ -110,7 +115,9 @@ pub fn validate_regular_regex(pattern: &str) -> Result<(), String> {
                         i += 1;
                     }
                 }
-                if !closed { return Err("unterminated character class".to_string()); }
+                if !closed {
+                    return Err("unterminated character class".to_string());
+                }
                 can_quantify = true;
             }
             b'(' => {
@@ -139,46 +146,95 @@ pub fn validate_regular_regex(pattern: &str) -> Result<(), String> {
                 can_quantify = false;
             }
             b')' => {
-                if group_depth == 0 { return Err("unmatched ')' in regex".to_string()); }
+                if group_depth == 0 {
+                    return Err("unmatched ')' in regex".to_string());
+                }
                 group_depth -= 1;
                 i += 1;
                 can_quantify = true;
             }
-            b'^' | b'$' => return Err("regex anchors are not supported; GLRM regexes already use full-match semantics".to_string()),
-            b'|' => { i += 1; can_quantify = false; }
-            b'*' | b'+' | b'?' => {
-                if !can_quantify { return Err("postfix regex quantifier has no preceding atom".to_string()); }
+            b'^' | b'$' => return Err(
+                "regex anchors are not supported; GLRM regexes already use full-match semantics"
+                    .to_string(),
+            ),
+            b'|' => {
                 i += 1;
-                if input.get(i) == Some(&b'?') { i += 1; }
+                can_quantify = false;
+            }
+            b'*' | b'+' | b'?' => {
+                if !can_quantify {
+                    return Err("postfix regex quantifier has no preceding atom".to_string());
+                }
+                i += 1;
+                if input.get(i) == Some(&b'?') {
+                    i += 1;
+                }
                 can_quantify = false;
             }
             b'{' => {
-                if !can_quantify { return Err("bounded regex repetition has no preceding atom".to_string()); }
+                if !can_quantify {
+                    return Err("bounded regex repetition has no preceding atom".to_string());
+                }
                 i += 1;
                 let start_min = i;
-                while input.get(i).is_some_and(u8::is_ascii_digit) { i += 1; }
-                if i == start_min { return Err("bounded regex repetition requires a lower bound".to_string()); }
-                let min: usize = std::str::from_utf8(&input[start_min..i]).unwrap().parse().map_err(|_| "regex repetition bound is too large".to_string())?;
+                while input.get(i).is_some_and(u8::is_ascii_digit) {
+                    i += 1;
+                }
+                if i == start_min {
+                    return Err("bounded regex repetition requires a lower bound".to_string());
+                }
+                let min: usize = std::str::from_utf8(&input[start_min..i])
+                    .unwrap()
+                    .parse()
+                    .map_err(|_| "regex repetition bound is too large".to_string())?;
                 let mut max = Some(min);
                 if input.get(i) == Some(&b',') {
                     i += 1;
                     let start_max = i;
-                    while input.get(i).is_some_and(u8::is_ascii_digit) { i += 1; }
-                    max = if i == start_max { None } else { Some(std::str::from_utf8(&input[start_max..i]).unwrap().parse().map_err(|_| "regex repetition bound is too large".to_string())?) };
+                    while input.get(i).is_some_and(u8::is_ascii_digit) {
+                        i += 1;
+                    }
+                    max = if i == start_max {
+                        None
+                    } else {
+                        Some(
+                            std::str::from_utf8(&input[start_max..i])
+                                .unwrap()
+                                .parse()
+                                .map_err(|_| "regex repetition bound is too large".to_string())?,
+                        )
+                    };
                 }
-                if input.get(i) != Some(&b'}') { return Err("unterminated or malformed bounded regex repetition".to_string()); }
-                if let Some(max) = max && max < min { return Err(format!("regex repetition upper bound {max} is smaller than lower bound {min}")); }
+                if input.get(i) != Some(&b'}') {
+                    return Err("unterminated or malformed bounded regex repetition".to_string());
+                }
+                if let Some(max) = max
+                    && max < min
+                {
+                    return Err(format!(
+                        "regex repetition upper bound {max} is smaller than lower bound {min}"
+                    ));
+                }
                 i += 1;
-                if input.get(i) == Some(&b'?') { i += 1; }
+                if input.get(i) == Some(&b'?') {
+                    i += 1;
+                }
                 can_quantify = false;
             }
             b'}' => return Err("unmatched '}' in regex".to_string()),
-            _ => { i += 1; can_quantify = true; }
+            _ => {
+                i += 1;
+                can_quantify = true;
+            }
         }
     }
-    if group_depth != 0 { return Err("unterminated '(' group in regex".to_string()); }
+    if group_depth != 0 {
+        return Err("unterminated '(' group in regex".to_string());
+    }
     let (_, consumed) = parse_alternation(input, 0, true);
-    if consumed != input.len() { return Err("regex contains unsupported or malformed syntax".to_string()); }
+    if consumed != input.len() {
+        return Err("regex contains unsupported or malformed syntax".to_string());
+    }
     Ok(())
 }
 
@@ -424,8 +480,8 @@ fn consume_named_group_name(input: &[u8], mut pos: usize) -> Option<usize> {
 }
 
 fn utf8_char_end(input: &[u8], pos: usize) -> usize {
-    let remaining = std::str::from_utf8(&input[pos..])
-        .expect("regex pattern originated from valid UTF-8");
+    let remaining =
+        std::str::from_utf8(&input[pos..]).expect("regex pattern originated from valid UTF-8");
     pos + remaining
         .chars()
         .next()
@@ -434,8 +490,8 @@ fn utf8_char_end(input: &[u8], pos: usize) -> usize {
 }
 
 fn utf8_char_at(input: &[u8], pos: usize) -> (char, usize) {
-    let remaining = std::str::from_utf8(&input[pos..])
-        .expect("regex pattern originated from valid UTF-8");
+    let remaining =
+        std::str::from_utf8(&input[pos..]).expect("regex pattern originated from valid UTF-8");
     let character = remaining
         .chars()
         .next()
@@ -658,10 +714,7 @@ fn parse_unicode_char_class(input: &[u8], pos: usize) -> (Expr, usize) {
             break;
         };
         cursor = next;
-        if cursor + 1 < input.len()
-            && input[cursor] == b'-'
-            && input[cursor + 1] != b']'
-        {
+        if cursor + 1 < input.len() && input[cursor] == b'-' && input[cursor + 1] != b']' {
             if let Some((end, next)) = parse_utf8_class_atom(input, cursor + 1) {
                 add_utf8_class_range(start, end, &mut byte_set, &mut unicode_ranges);
                 cursor = next;
@@ -785,7 +838,10 @@ fn parse_escape(input: &[u8], pos: usize, utf8: bool) -> (Expr, usize) {
         b'D' => (negated_ascii_class(ascii_digit_set(), utf8), pos + 2),
         b'S' => (negated_ascii_class(ascii_space_set(), utf8), pos + 2),
         b'W' => (negated_ascii_class(ascii_word_set(), utf8), pos + 2),
-        _ => (Expr::U8Seq(vec![parse_escape_byte(input, pos)]), pos + escape_len(input, pos)),
+        _ => (
+            Expr::U8Seq(vec![parse_escape_byte(input, pos)]),
+            pos + escape_len(input, pos),
+        ),
     }
 }
 
@@ -829,8 +885,6 @@ fn hex_digit(b: u8) -> u8 {
     }
 }
 
-
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -840,7 +894,10 @@ mod tests {
 
         use crate::automata::lexer::tokenizer::Lexer as _;
 
-        let tokenizer = expr.clone().build().into_tokenizer(1, Some(Arc::from([expr])));
+        let tokenizer = expr
+            .clone()
+            .build()
+            .into_tokenizer(1, Some(Arc::from([expr])));
         tokenizer
             .execute_from_state(input, tokenizer.initial_state())
             .matches
@@ -920,9 +977,21 @@ mod tests {
     fn direct_unicode_ranges_and_negation_match_scalar_semantics() {
         let cases = [
             ("[é-ê]", vec!['é', 'ê'], vec!['è', 'ë', 'a']),
-            ("[\u{7ff}-\u{800}]", vec!['\u{7ff}', '\u{800}'], vec!['\u{7fe}', '\u{801}']),
-            ("[\u{d7ff}-\u{e000}]", vec!['\u{d7ff}', '\u{e000}'], vec!['a']),
-            ("[\u{ffff}-\u{10000}]", vec!['\u{ffff}', '\u{10000}'], vec!['\u{fffe}', '\u{10001}']),
+            (
+                "[\u{7ff}-\u{800}]",
+                vec!['\u{7ff}', '\u{800}'],
+                vec!['\u{7fe}', '\u{801}'],
+            ),
+            (
+                "[\u{d7ff}-\u{e000}]",
+                vec!['\u{d7ff}', '\u{e000}'],
+                vec!['a'],
+            ),
+            (
+                "[\u{ffff}-\u{10000}]",
+                vec!['\u{ffff}', '\u{10000}'],
+                vec!['\u{fffe}', '\u{10001}'],
+            ),
             ("[😀-😃]", vec!['😀', '😁', '😂', '😃'], vec!['😄', 'a']),
         ];
         for (pattern, accepted, rejected) in cases {
@@ -971,7 +1040,6 @@ mod tests {
         }
     }
 
-
     #[test]
     fn standard_unicode_escape_ast_is_one_scalar() {
         assert_eq!(
@@ -990,5 +1058,4 @@ mod tests {
             ])
         );
     }
-
 }

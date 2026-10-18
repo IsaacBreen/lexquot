@@ -45,13 +45,10 @@ impl ManyToOneIdMap {
         original_to_internal: Vec<u32>,
         representative_original_ids: Vec<u32>,
     ) -> Self {
-        debug_assert!(representative_original_ids
-            .iter()
-            .enumerate()
-            .all(|(internal, &original)| original_to_internal
-                .get(original as usize)
-                .copied()
-                == Some(internal as u32)));
+        debug_assert!(representative_original_ids.iter().enumerate().all(
+            |(internal, &original)| original_to_internal.get(original as usize).copied()
+                == Some(internal as u32)
+        ));
         let internal_to_originals = representative_original_ids
             .iter()
             .map(|&original| vec![original])
@@ -197,7 +194,10 @@ impl ManyToOneIdMap {
         if originals.len() <= 1 {
             return;
         }
-        let Some(index) = originals.iter().position(|&candidate| candidate == original) else {
+        let Some(index) = originals
+            .iter()
+            .position(|&candidate| candidate == original)
+        else {
             return;
         };
         originals.swap_remove(index);
@@ -274,7 +274,6 @@ impl GlobalScannerStateQuotient {
     pub fn raw_state_count(&self) -> usize {
         self.map.original_to_internal.len()
     }
-
 }
 
 #[derive(Debug, Clone)]
@@ -287,8 +286,6 @@ pub struct InternalIdMap {
     pub deferred_vocab_singleton_original_ids: Option<Arc<[u32]>>,
 }
 
-
-
 impl InternalIdMap {
     pub fn num_tsids(&self) -> u32 {
         self.tokenizer_states.num_internal_ids()
@@ -297,7 +294,10 @@ impl InternalIdMap {
     pub fn num_internal_tokens(&self) -> u32 {
         self.deferred_vocab_singleton_original_ids
             .as_ref()
-            .map_or_else(|| self.vocab_tokens.num_internal_ids(), |ids| ids.len() as u32)
+            .map_or_else(
+                || self.vocab_tokens.num_internal_ids(),
+                |ids| ids.len() as u32,
+            )
     }
 
     pub fn max_internal_token_id(&self) -> u32 {

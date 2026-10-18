@@ -221,7 +221,9 @@ impl NFA {
     ) {
         let new_id = scc_map[old_id];
         let new_state = &mut new_states[new_id];
-        new_state.finalizers.extend(state.finalizers.iter().copied());
+        new_state
+            .finalizers
+            .extend(state.finalizers.iter().copied());
 
         for (set, target) in &state.transitions {
             let new_target = scc_map[*target as usize] as u32;

@@ -1,15 +1,15 @@
 use crate::equiv_types::ManyToOneIdMap;
 
-pub mod max_length;
 pub mod global_token_position;
+pub mod max_length;
 pub mod nfa;
 pub mod pipeline;
 pub mod restricted_observation;
 
 pub use pipeline::{
-    resolve_global_pipeline_config, resolve_l2p_pipeline_config, run_state_equivalence_pipeline,
+    StateEquivalenceScope, resolve_global_pipeline_config, resolve_l2p_pipeline_config,
+    run_state_equivalence_pipeline,
     run_state_equivalence_pipeline_with_initial_restricted_observation_certificate,
-    StateEquivalenceScope,
 };
 
 pub fn identity_state_map(num_states: usize) -> ManyToOneIdMap {
@@ -50,13 +50,17 @@ pub fn build_state_map_from_subset_representatives(
                 init_rep_to_new_internal[state] = rep_to_internal[rep];
             }
 
-            for (orig_state, &init_internal) in initial_state_map.original_to_internal.iter().enumerate() {
+            for (orig_state, &init_internal) in
+                initial_state_map.original_to_internal.iter().enumerate()
+            {
                 if init_internal == u32::MAX
-                    || (init_internal as usize) >= initial_state_map.representative_original_ids.len()
+                    || (init_internal as usize)
+                        >= initial_state_map.representative_original_ids.len()
                 {
                     continue;
                 }
-                let init_rep = initial_state_map.representative_original_ids[init_internal as usize] as usize;
+                let init_rep =
+                    initial_state_map.representative_original_ids[init_internal as usize] as usize;
                 let new_internal = init_rep_to_new_internal[init_rep];
                 if new_internal == u32::MAX {
                     continue;

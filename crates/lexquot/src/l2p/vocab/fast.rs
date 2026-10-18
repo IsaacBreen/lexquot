@@ -3,7 +3,7 @@
 //! Each token is classified by its match positions, suffix structure, and end
 //! states across all tokenizer starts.
 
-use super::super::compat::{compute_byte_classes, FlatDfa, FlatTransitionCache, TokenizerView};
+use super::super::compat::{FlatDfa, FlatTransitionCache, TokenizerView, compute_byte_classes};
 use ahash::{AHasher, RandomState};
 use hashbrown::HashMap;
 use once_cell::sync::Lazy;
@@ -16,10 +16,10 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Instant;
 
 use super::super::disallowed_follows::normalize_disallowed_follows;
+use crate::compile_profile_enabled;
 use crate::ds::bitset::BitSet;
 use crate::ds::u8set::U8Set;
 use crate::equiv_types::ManyToOneIdMap;
-use crate::compile_profile_enabled;
 
 pub type VocabEquivalenceResult = BTreeSet<Vec<usize>>;
 
@@ -452,7 +452,9 @@ impl SharedVocabDfaBase {
         }
         let mut row_major = vec![NONE; quotient_states * num_classes];
         let mut self_loop_bytes = Vec::with_capacity(quotient_states);
-        for (internal, &raw_representative) in state_map.representative_original_ids.iter().enumerate() {
+        for (internal, &raw_representative) in
+            state_map.representative_original_ids.iter().enumerate()
+        {
             let raw_representative = raw_representative as usize;
             if raw_representative >= raw_states {
                 return None;
@@ -497,7 +499,8 @@ impl SharedVocabDfaBase {
         let mut class_major = vec![NONE; quotient_states * num_classes];
         for state in 0..quotient_states {
             for class in 0..num_classes {
-                class_major[class * quotient_states + state] = row_major[state * num_classes + class];
+                class_major[class * quotient_states + state] =
+                    row_major[state * num_classes + class];
             }
         }
         let row_lock = OnceLock::new();
@@ -554,10 +557,9 @@ impl SharedVocabDfaBase {
         let num_dfa_states = dfa.states.len();
         if self.source_transitions.is_empty() {
             return self.self_loop_bytes.len() == num_dfa_states
-                && self
-                    .trans_by_state_class
-                    .get()
-                    .is_some_and(|transitions| transitions.len() == num_dfa_states * self.num_classes);
+                && self.trans_by_state_class.get().is_some_and(|transitions| {
+                    transitions.len() == num_dfa_states * self.num_classes
+                });
         }
         self.self_loop_bytes.len() == num_dfa_states
             && self.source_transitions.len() == dfa.transitions.len()
@@ -639,13 +641,12 @@ pub struct SharedVocabAnalysisDfaCache {
 }
 
 impl SharedVocabAnalysisDfaCache {
-    fn get_or_init(
-        &self,
-        key: AnalysisDfaCacheKey,
-        build: impl FnOnce() -> Dfa,
-    ) -> Arc<Dfa> {
+    fn get_or_init(&self, key: AnalysisDfaCacheKey, build: impl FnOnce() -> Dfa) -> Arc<Dfa> {
         let entry = {
-            let mut entries = self.entries.lock().expect("vocab analysis DFA cache poisoned");
+            let mut entries = self
+                .entries
+                .lock()
+                .expect("vocab analysis DFA cache poisoned");
             entries
                 .entry(key)
                 .or_insert_with(|| Arc::new(OnceLock::new()))
@@ -676,7 +677,10 @@ impl Dfa {
         }
         let mut h = new_hasher();
         h.write_u8(2);
-        h.write_u64(hash_filtered_group_list(&self.possible_future_groups[state], disallowed));
+        h.write_u64(hash_filtered_group_list(
+            &self.possible_future_groups[state],
+            disallowed,
+        ));
         h.finish()
     }
 
@@ -684,7 +688,11 @@ impl Dfa {
     #[inline]
     fn transition(&self, state: usize, byte: u8) -> u32 {
         let class = self.byte_to_class[byte as usize] as usize;
-        unsafe { *self.trans_by_class.get_unchecked(class * self.num_states + state) }
+        unsafe {
+            *self
+                .trans_by_class
+                .get_unchecked(class * self.num_states + state)
+        }
     }
 
     #[inline]
@@ -871,8 +879,7 @@ fn first_transition_factor_moderate_extension_enabled(
     num_states: usize,
     num_groups: usize,
 ) -> bool {
-    (FIRST_TRANSITION_FACTOR_MODERATE_MIN_TOKENS
-        ..=FIRST_TRANSITION_FACTOR_MODERATE_MAX_TOKENS)
+    (FIRST_TRANSITION_FACTOR_MODERATE_MIN_TOKENS..=FIRST_TRANSITION_FACTOR_MODERATE_MAX_TOKENS)
         .contains(&num_tokens)
         && default_vocab_batch_size(num_states, num_groups, num_tokens) >= num_states
 }
@@ -923,11 +930,7 @@ fn first_transition_factor_final_single_batch_enabled() -> bool {
     env_flag_enabled("LEXQUOT_VOCAB_FIRST_TRANSITION_FACTOR_FINAL_SINGLE_BATCH")
 }
 
-fn default_vocab_batch_size(
-    num_states: usize,
-    num_groups: usize,
-    num_tokens: usize,
-) -> usize {
+fn default_vocab_batch_size(num_states: usize, num_groups: usize, num_tokens: usize) -> usize {
     if num_states == 0 {
         return 0;
     }
@@ -1006,12 +1009,7 @@ fn states_by_transition_diversity(dfa: &Dfa, states: &[usize]) -> Vec<usize> {
         })
         .collect();
 
-    ranked.sort_unstable_by(|left, right| {
-        right
-            .1
-            .cmp(&left.1)
-            .then_with(|| left.0.cmp(&right.0))
-    });
+    ranked.sort_unstable_by(|left, right| right.1.cmp(&left.1).then_with(|| left.0.cmp(&right.0)));
     ranked.into_iter().map(|(state_id, _)| state_id).collect()
 }
 
@@ -1051,10 +1049,10 @@ fn exact_literal_state_row_quotient(
     // future-group list determines the completion observation, while the
     // finalizer list is observable at the current consumed position.
     let labels_started_at = profiling.then(Instant::now);
-    let mut label_ids = HashMap::<
-        (bool, SmallVec<[usize; 4]>, SmallVec<[usize; 4]>),
-        u32,
-    >::with_capacity(num_states.min(16_384));
+    let mut label_ids =
+        HashMap::<(bool, SmallVec<[usize; 4]>, SmallVec<[usize; 4]>), u32>::with_capacity(
+            num_states.min(16_384),
+        );
     let mut initial_classes = Vec::with_capacity(num_states);
     let mut next_label = 0u32;
     for state in 0..num_states {
@@ -1070,7 +1068,8 @@ fn exact_literal_state_row_quotient(
         });
         initial_classes.push(label);
     }
-    let labels_ms = labels_started_at.map_or(0.0, |started| started.elapsed().as_secs_f64() * 1000.0);
+    let labels_ms =
+        labels_started_at.map_or(0.0, |started| started.elapsed().as_secs_f64() * 1000.0);
 
     let refine_started_at = profiling.then(Instant::now);
     let mut hashes = vec![HASH_SEED3; num_states];
@@ -1232,8 +1231,8 @@ fn exact_literal_state_row_quotient(
             break;
         }
     }
-    let refine_ms = refine_started_at
-        .map_or(0.0, |started| started.elapsed().as_secs_f64() * 1000.0);
+    let refine_ms =
+        refine_started_at.map_or(0.0, |started| started.elapsed().as_secs_f64() * 1000.0);
     let class_count = classes
         .iter()
         .copied()
@@ -1299,7 +1298,13 @@ fn build_dfa(
     disallowed_follows: &BTreeMap<u32, BitSet>,
     byte_to_class_override: Option<&[u8; 256]>,
 ) -> Dfa {
-    build_dfa_with_group_filter(tokenizer, disallowed_follows, byte_to_class_override, None, None)
+    build_dfa_with_group_filter(
+        tokenizer,
+        disallowed_follows,
+        byte_to_class_override,
+        None,
+        None,
+    )
 }
 
 /// Build the analysis DFA, optionally filtering to only active groups.
@@ -1322,9 +1327,8 @@ fn build_dfa_with_group_filter(
     assert!(dfa.states.len() <= u32::MAX as usize, "DFA too large");
 
     // Lazily initialize the shared base from this TokenizerView's DFA.
-    let shared_base: Option<&SharedVocabDfaBase> = shared_cache.map(|cache| {
-        cache.get_or_init(|| SharedVocabDfaBase::build_from_dfa(dfa))
-    });
+    let shared_base: Option<&SharedVocabDfaBase> =
+        shared_cache.map(|cache| cache.get_or_init(|| SharedVocabDfaBase::build_from_dfa(dfa)));
 
     // Compute the raw group axis before filtering. The active view removes
     // observations but does not change the terminal-ID coordinate used by
@@ -1338,14 +1342,24 @@ fn build_dfa_with_group_filter(
 
     for (_state_idx, state) in dfa.states.iter().enumerate() {
         let filtered_finalizers: SmallVec<[usize; 4]> = if let Some(ag) = active_groups {
-            state.finalizers.iter().copied().filter(|&gid| ag.get(gid).copied().unwrap_or(false)).collect()
+            state
+                .finalizers
+                .iter()
+                .copied()
+                .filter(|&gid| ag.get(gid).copied().unwrap_or(false))
+                .collect()
         } else {
             state.finalizers.iter().copied().collect()
         };
         finalizers.push(filtered_finalizers);
 
         let future_groups: SmallVec<[usize; 4]> = if let Some(ag) = active_groups {
-            state.possible_future_group_ids.iter().copied().filter(|&gid| ag.get(gid).copied().unwrap_or(false)).collect()
+            state
+                .possible_future_group_ids
+                .iter()
+                .copied()
+                .filter(|&gid| ag.get(gid).copied().unwrap_or(false))
+                .collect()
         } else {
             state.possible_future_group_ids.iter().copied().collect()
         };
@@ -1357,12 +1371,12 @@ fn build_dfa_with_group_filter(
     let num_dfa_states = dfa.states.len();
 
     // Use shared base if available and compatible, otherwise compute from scratch.
-    let compatible_shared_base = shared_base.filter(|base| {
-        base.is_compatible_with_dfa(dfa)
-    });
+    let compatible_shared_base = shared_base.filter(|base| base.is_compatible_with_dfa(dfa));
     let (byte_to_class, trans_by_class, self_loop_bytes, none_completion_hash) =
         if let Some(base) = compatible_shared_base {
-            let btc = byte_to_class_override.copied().unwrap_or(base.byte_to_class);
+            let btc = byte_to_class_override
+                .copied()
+                .unwrap_or(base.byte_to_class);
             (
                 btc,
                 base.transitions_by_class_arc(),
@@ -1370,7 +1384,9 @@ fn build_dfa_with_group_filter(
                 base.none_completion_hash,
             )
         } else {
-            let btc = byte_to_class_override.copied().unwrap_or_else(|| compute_byte_classes(dfa));
+            let btc = byte_to_class_override
+                .copied()
+                .unwrap_or_else(|| compute_byte_classes(dfa));
             let num_classes = btc
                 .iter()
                 .copied()
@@ -1431,11 +1447,7 @@ fn build_dfa_with_group_filter(
     }
 }
 
-fn intersect_node_disallowed(
-    scratch: &mut Scratch,
-    pos: usize,
-    incoming: &BitSet,
-) {
+fn intersect_node_disallowed(scratch: &mut Scratch, pos: usize, incoming: &BitSet) {
     ensure_position_slot(&mut scratch.dag_disallowed, pos);
     if let Some(existing) = scratch.dag_disallowed[pos].as_mut() {
         intersect_disallowed(existing, incoming);
@@ -1757,7 +1769,11 @@ fn record_target_gid(
         return;
     }
 
-    ensure_target_gids_map(target_gids, *single_target_pos, single_target_gids.as_slice());
+    ensure_target_gids_map(
+        target_gids,
+        *single_target_pos,
+        single_target_gids.as_slice(),
+    );
 
     let gids = target_gids.entry(pos).or_default();
     if gids.is_empty() {
@@ -1824,7 +1840,10 @@ fn run_batch_inner(
             for idx in 0..active_len {
                 let i = scratch.active_indices[idx];
                 let base = i * num_groups;
-                let next_state = unsafe { *dfa.trans_by_class.get_unchecked(class_base + scratch.current_states[i]) };
+                let next_state = unsafe {
+                    *dfa.trans_by_class
+                        .get_unchecked(class_base + scratch.current_states[i])
+                };
                 if next_state != NONE {
                     let ns = next_state as usize;
                     scratch.current_states[i] = ns;
@@ -1977,26 +1996,14 @@ fn run_batch(
     if state_group_size >= num_states {
         run_batch_inner(dfa, scratch, slice, 0, num_states);
 
-        collect_targets(
-            scratch,
-            num_groups,
-            len,
-            0,
-            num_states,
-        );
+        collect_targets(scratch, num_groups, len, 0, num_states);
     } else {
         for state_offset in (0..num_states).step_by(state_group_size) {
             let group_len = (state_offset + state_group_size).min(num_states) - state_offset;
 
             run_batch_inner(dfa, scratch, slice, state_offset, group_len);
 
-            collect_targets(
-                scratch,
-                num_groups,
-                len,
-                state_offset,
-                group_len,
-            );
+            collect_targets(scratch, num_groups, len, state_offset, group_len);
         }
     }
 }
@@ -2095,10 +2102,15 @@ fn hash_suffixes(
         let edges = node.edges.clone();
         let end_state = node.end_state;
         let mut h = new_hasher();
-        h.write_u64(dfa.completion_with_disallowed(
-            end_state,
-            scratch.dag_disallowed.get(pos).and_then(|bits| bits.as_ref()),
-        ));
+        h.write_u64(
+            dfa.completion_with_disallowed(
+                end_state,
+                scratch
+                    .dag_disallowed
+                    .get(pos)
+                    .and_then(|bits| bits.as_ref()),
+            ),
+        );
 
         for &(gid, target) in &edges {
             if node_disallows_gid(scratch, pos, gid) {
@@ -2119,11 +2131,7 @@ fn hash_suffixes(
     scratch.dag_queue.len()
 }
 
-fn trie_target_disallowed_at(
-    dfa: &Dfa,
-    scratch: &Scratch,
-    position: usize,
-) -> Option<BitSet> {
+fn trie_target_disallowed_at(dfa: &Dfa, scratch: &Scratch, position: usize) -> Option<BitSet> {
     let mut combined = None::<BitSet>;
     if scratch.trie_target_bits_enabled {
         let bit_base = position * scratch.dirty_words;
@@ -2498,8 +2506,8 @@ fn hash_single_target_suffix_dense_impl(
         &mut scratch.suffix_dirty_groups,
     );
     if edges.iter().any(|&(_, target)| target < len) {
-        let root_disallowed = root_disallowed_owned
-            .unwrap_or_else(|| scratch.single_target_disallowed.clone());
+        let root_disallowed =
+            root_disallowed_owned.unwrap_or_else(|| scratch.single_target_disallowed.clone());
         return hash_trie_suffixes_dense(
             dfa,
             slice,
@@ -2518,10 +2526,9 @@ fn hash_single_target_suffix_dense_impl(
         .unwrap_or(&scratch.single_target_disallowed);
 
     let mut h = new_hasher();
-    h.write_u64(dfa.completion_with_disallowed(
-        end_state.unwrap_or(STATE_NONE),
-        Some(&root_disallowed),
-    ));
+    h.write_u64(
+        dfa.completion_with_disallowed(end_state.unwrap_or(STATE_NONE), Some(&root_disallowed)),
+    );
     for &(gid, _target) in &edges {
         if root_disallowed.contains(gid) {
             continue;
@@ -2593,11 +2600,7 @@ fn run_suffix(
     (end_state, edges)
 }
 
-fn try_hash_single_target_suffix(
-    dfa: &Dfa,
-    slice: &[u8],
-    scratch: &mut Scratch,
-) -> Option<usize> {
+fn try_hash_single_target_suffix(dfa: &Dfa, slice: &[u8], scratch: &mut Scratch) -> Option<usize> {
     let pos = scratch.single_target_pos;
     if pos == usize::MAX {
         return None;
@@ -2628,10 +2631,9 @@ fn try_hash_single_target_suffix(
     }
 
     let mut h = new_hasher();
-    h.write_u64(dfa.completion_with_disallowed(
-        end_state.unwrap_or(STATE_NONE),
-        Some(&root_disallowed),
-    ));
+    h.write_u64(
+        dfa.completion_with_disallowed(end_state.unwrap_or(STATE_NONE), Some(&root_disallowed)),
+    );
     for &(gid, _target) in &edges {
         if root_disallowed.contains(gid) {
             continue;
@@ -2647,11 +2649,7 @@ fn try_hash_single_target_suffix(
 
 /// Compute a token's full signature over a batch of initial states.
 /// Also cleans up match_positions for dirty groups (maintaining the NONE invariant).
-fn finish_token_signature(
-    dfa: &Dfa,
-    chunk_states: &[usize],
-    scratch: &mut Scratch,
-) -> u64 {
+fn finish_token_signature(dfa: &Dfa, chunk_states: &[usize], scratch: &mut Scratch) -> u64 {
     let num_groups = dfa.num_groups;
     let dirty_words = scratch.dirty_words;
     let dag = &scratch.dag_nodes;
@@ -2835,7 +2833,10 @@ fn first_distinguishing_state_for_token_pair_with_count<S: AsRef<[u8]>>(
         for i in 0..batch_len {
             states_checked += 1;
             if left_words[i] != right_words[i] {
-                return (Some(ordered_original_states[batch_start + i]), states_checked);
+                return (
+                    Some(ordered_original_states[batch_start + i]),
+                    states_checked,
+                );
             }
         }
     }
@@ -2924,7 +2925,8 @@ fn run_vocab_row_cert_diag<S: AsRef<[u8]> + Sync>(
 ) {
     let started_at = std::time::Instant::now();
     let rep_token_indices: Vec<usize> = groups.iter().map(|group| group[0]).collect();
-    let mut row_keys = vec![Vec::<u64>::with_capacity(rep_token_indices.len()); ordered_states.len()];
+    let mut row_keys =
+        vec![Vec::<u64>::with_capacity(rep_token_indices.len()); ordered_states.len()];
 
     for batch_start in (0..ordered_states.len()).step_by(batch_size.max(1)) {
         let batch_end = (batch_start + batch_size.max(1)).min(ordered_states.len());
@@ -2950,8 +2952,7 @@ fn run_vocab_row_cert_diag<S: AsRef<[u8]> + Sync>(
         }
     }
 
-    let mut row_class_counts: HashMap<Vec<u64>, usize> =
-        HashMap::with_capacity(row_keys.len() / 2);
+    let mut row_class_counts: HashMap<Vec<u64>, usize> = HashMap::with_capacity(row_keys.len() / 2);
     for row in row_keys {
         *row_class_counts.entry(row).or_insert(0) += 1;
     }
@@ -2991,14 +2992,7 @@ fn token_signature(
 ) -> u64 {
     scratch.single_target_hash_pos = usize::MAX;
     scratch.single_target_hash = 0;
-    run_batch(
-        dfa,
-        scratch,
-        token,
-        chunk_states,
-        state_group_size,
-        false,
-    );
+    run_batch(dfa, scratch, token, chunk_states, state_group_size, false);
     let target_count = scratch.targets.len();
     if target_count == 1 {
         if let Some(dag_nodes) = try_hash_single_target_suffix(dfa, token, scratch) {
@@ -3023,8 +3017,7 @@ fn token_signature(
 const TRIE_CHUNK_SIZE: usize = 128;
 const TRIE_WALK_MIN_TOKENS: usize = 256;
 
-static TRIE_WALK_DISABLED: Lazy<bool> =
-    Lazy::new(|| env_flag_enabled("LEXQUOT_DISABLE_TRIE_WALK"));
+static TRIE_WALK_DISABLED: Lazy<bool> = Lazy::new(|| env_flag_enabled("LEXQUOT_DISABLE_TRIE_WALK"));
 
 struct DepthChangeLog {
     /// Batch indices whose DFA paths remain live after this depth.
@@ -3129,7 +3122,9 @@ struct ScratchLease<'a> {
 
 impl ScratchLease<'_> {
     fn worker_mut(&mut self) -> &mut ScratchWorker {
-        self.worker.as_mut().expect("scratch lease must hold its worker")
+        self.worker
+            .as_mut()
+            .expect("scratch lease must hold its worker")
     }
 }
 
@@ -3233,15 +3228,12 @@ fn dfs_step(
     for &i in source_indices {
         let old_state = scratch.current_states[i];
         debug_assert_ne!(old_state, STATE_NONE);
-        if dfa.finalizers[old_state].is_empty()
-            && dfa.self_loop_bytes[old_state].contains(byte)
-        {
+        if dfa.finalizers[old_state].is_empty() && dfa.self_loop_bytes[old_state].contains(byte) {
             log.active_indices.push(i);
             continue;
         }
 
-        let next_state_raw =
-            unsafe { *dfa.trans_by_class.get_unchecked(class_base + old_state) };
+        let next_state_raw = unsafe { *dfa.trans_by_class.get_unchecked(class_base + old_state) };
         if next_state_raw == NONE {
             log.state_changes.push((i, old_state));
             scratch.current_states[i] = STATE_NONE;
@@ -3323,9 +3315,7 @@ fn dfs_step_profiled(
         let old_state = scratch.current_states[i];
         debug_assert_ne!(old_state, STATE_NONE);
         step_stats.states_visited += 1;
-        if dfa.finalizers[old_state].is_empty()
-            && dfa.self_loop_bytes[old_state].contains(byte)
-        {
+        if dfa.finalizers[old_state].is_empty() && dfa.self_loop_bytes[old_state].contains(byte) {
             log.active_indices.push(i);
             step_stats.noop_self_loops += 1;
             continue;
@@ -3333,8 +3323,7 @@ fn dfs_step_profiled(
 
         let mut state_new_dirty_groups = 0usize;
 
-        let next_state_raw =
-            unsafe { *dfa.trans_by_class.get_unchecked(class_base + old_state) };
+        let next_state_raw = unsafe { *dfa.trans_by_class.get_unchecked(class_base + old_state) };
         if next_state_raw == NONE {
             log.state_changes.push((i, old_state));
             scratch.current_states[i] = STATE_NONE;
@@ -3430,11 +3419,7 @@ fn dfs_backtrack(
 /// in the original `finish_token_signature_no_cleanup`, reducing latency from
 /// ~4 cycles/element to ~1 cycle/element on pipelined CPUs.
 #[inline(never)]
-fn finish_token_signature_clean(
-    dfa: &Dfa,
-    num_initial_states: usize,
-    scratch: &Scratch,
-) -> u64 {
+fn finish_token_signature_clean(dfa: &Dfa, num_initial_states: usize, scratch: &Scratch) -> u64 {
     let c = HASH_SEED1;
     let c2 = c.wrapping_mul(c);
     let c3 = c2.wrapping_mul(c);
@@ -3486,9 +3471,8 @@ fn finish_token_signature_sparse_live_clean(
         let state = scratch.current_states[index];
         debug_assert_ne!(state, STATE_NONE);
         let correction = dfa.completion_hash[state].wrapping_sub(dfa.none_completion_hash);
-        signature = signature.wrapping_add(
-            correction.wrapping_mul(scratch.completion_weights[index]),
-        );
+        signature =
+            signature.wrapping_add(correction.wrapping_mul(scratch.completion_weights[index]));
     }
     signature
 }
@@ -3569,12 +3553,7 @@ fn finish_token_signature_sparse_dirty(
     // The dirty-state loop below then replaces each clean completion with the
     // full terminal-edge signature at that same polynomial position.
     let mut sig = if live_indices.len().saturating_mul(2) <= num_initial_states {
-        finish_token_signature_sparse_live_clean(
-            dfa,
-            live_indices,
-            scratch,
-            all_none_signature,
-        )
+        finish_token_signature_sparse_live_clean(dfa, live_indices, scratch, all_none_signature)
     } else {
         finish_token_signature_clean(dfa, num_initial_states, scratch)
     };
@@ -3628,7 +3607,10 @@ fn finish_token_signature_sparse_dirty(
 }
 
 fn token_indices_in_lexical_order<S: AsRef<[u8]>>(strings: &[S]) -> Vec<usize> {
-    if strings.windows(2).all(|pair| pair[0].as_ref() <= pair[1].as_ref()) {
+    if strings
+        .windows(2)
+        .all(|pair| pair[0].as_ref() <= pair[1].as_ref())
+    {
         return (0..strings.len()).collect();
     }
     let mut order = (0..strings.len()).collect::<Vec<_>>();
@@ -3641,10 +3623,7 @@ fn token_indices_in_lexical_order<S: AsRef<[u8]>>(strings: &[S]) -> Vec<usize> {
     order
 }
 
-fn active_indices_in_lexical_order(
-    lexical_order: &[usize],
-    active_tokens: &[bool],
-) -> Vec<usize> {
+fn active_indices_in_lexical_order(lexical_order: &[usize], active_tokens: &[bool]) -> Vec<usize> {
     lexical_order
         .iter()
         .copied()
@@ -3722,9 +3701,11 @@ fn trie_walk_chunk_signatures_from_prefix<S: AsRef<[u8]> + Sync>(
         .map(|&token_idx| strings[token_idx].as_ref().len())
         .max()
         .unwrap_or(0);
-    debug_assert!(chunk
-        .iter()
-        .all(|&token_idx| strings[token_idx].as_ref().len() >= position_offset));
+    debug_assert!(
+        chunk
+            .iter()
+            .all(|&token_idx| strings[token_idx].as_ref().len() >= position_offset)
+    );
     reset_trie_target_aggregate(scratch, max_token_len);
 
     let mut dirty_count = 0usize;
@@ -3875,12 +3856,12 @@ fn trie_walk_chunk_signatures_from_prefix<S: AsRef<[u8]> + Sync>(
                 if dense_suffix_dag {
                     hash_single_target_suffix_dense(dfa, token, scratch);
                 } else if try_hash_single_target_suffix(dfa, token, scratch).is_none() {
-                        ensure_target_gids_map(
-                            &mut scratch.target_gids,
-                            scratch.single_target_pos,
-                            scratch.single_target_gids.as_slice(),
-                        );
-                        hash_suffixes(dfa, token, scratch, false);
+                    ensure_target_gids_map(
+                        &mut scratch.target_gids,
+                        scratch.single_target_pos,
+                        scratch.single_target_gids.as_slice(),
+                    );
+                    hash_suffixes(dfa, token, scratch, false);
                 }
                 stats.single_target_suffix_ms += elapsed_ms(single_target_started_at);
             } else if target_count > 0 {
@@ -3939,12 +3920,7 @@ fn trie_walk_chunk_signatures_from_prefix<S: AsRef<[u8]> + Sync>(
                 }
                 let ix = base + gid;
                 debug_assert_eq!(scratch.match_positions[ix], seeded_position);
-                update_trie_target_aggregate(
-                    scratch,
-                    gid,
-                    scratch.match_positions[ix],
-                    NONE,
-                );
+                update_trie_target_aggregate(scratch, gid, scratch.match_positions[ix], NONE);
                 scratch.match_positions[ix] = NONE;
             }
         }
@@ -4054,7 +4030,10 @@ fn try_first_transition_factor_plan<S: AsRef<[u8]> + Sync>(
     let mut seen_outcomes = vec![0u32; dfa.num_states + 1];
     let mut seen_outcome_epoch = 0u32;
 
-    for token_indices in tokens_by_class.into_iter().filter(|bucket| !bucket.is_empty()) {
+    for token_indices in tokens_by_class
+        .into_iter()
+        .filter(|bucket| !bucket.is_empty())
+    {
         semantic_buckets += 1;
         for &token_idx in &token_indices {
             preliminary_domain_by_token[token_idx] = semantic_buckets;
@@ -4093,13 +4072,12 @@ fn try_first_transition_factor_plan<S: AsRef<[u8]> + Sync>(
                 initial_outcomes.push(effective_outcome);
             }
         }
-        source_state_buckets_before = source_state_buckets_before
-            .saturating_add(initial_states.len());
-        source_state_buckets_after = source_state_buckets_after
-            .saturating_add(initial_outcomes.len());
-        preliminary_state_token_pairs = preliminary_state_token_pairs.saturating_add(
-            token_indices.len().saturating_mul(initial_outcomes.len()),
-        );
+        source_state_buckets_before =
+            source_state_buckets_before.saturating_add(initial_states.len());
+        source_state_buckets_after =
+            source_state_buckets_after.saturating_add(initial_outcomes.len());
+        preliminary_state_token_pairs = preliminary_state_token_pairs
+            .saturating_add(token_indices.len().saturating_mul(initial_outcomes.len()));
         buckets.push(FirstTransitionBucket {
             token_indices,
             initial_outcomes,
@@ -4128,13 +4106,10 @@ fn try_first_transition_factor_plan<S: AsRef<[u8]> + Sync>(
     }
 
     let full_state_token_pairs = strings.len().saturating_mul(initial_states.len());
-    let preliminary_ratio = preliminary_state_token_pairs as f64
-        / full_state_token_pairs.max(1) as f64;
-    let max_work_ratio = first_transition_factor_max_work_ratio(
-        strings.len(),
-        initial_states.len(),
-        dfa.num_groups,
-    );
+    let preliminary_ratio =
+        preliminary_state_token_pairs as f64 / full_state_token_pairs.max(1) as f64;
+    let max_work_ratio =
+        first_transition_factor_max_work_ratio(strings.len(), initial_states.len(), dfa.num_groups);
     if enforce_work_ratio && preliminary_ratio > max_work_ratio {
         return None;
     }
@@ -4171,7 +4146,10 @@ fn try_first_transition_factor_plan<S: AsRef<[u8]> + Sync>(
                 active_suffix_classes[dfa.byte_to_class[byte as usize] as usize] = true;
             }
         }
-        let active_suffix_class_count = active_suffix_classes.iter().filter(|&&active| active).count();
+        let active_suffix_class_count = active_suffix_classes
+            .iter()
+            .filter(|&&active| active)
+            .count();
         let quotient_row_work = dfa.num_states.saturating_mul(active_suffix_class_count);
         let quotient_max_work = first_transition_literal_row_quotient_max_work();
         let quotient = if quotient_row_work <= quotient_max_work {
@@ -4210,8 +4188,7 @@ fn try_first_transition_factor_plan<S: AsRef<[u8]> + Sync>(
             // retaining each token's semantic leading-byte domain in the later
             // grouping key.
             if buckets.len() > 1 {
-                let mut merged_buckets =
-                    Vec::<FirstTransitionBucket>::with_capacity(buckets.len());
+                let mut merged_buckets = Vec::<FirstTransitionBucket>::with_capacity(buckets.len());
                 let mut shape_to_bucket =
                     HashMap::<Vec<usize>, usize>::with_capacity(buckets.len());
                 for bucket in buckets {
@@ -4242,9 +4219,7 @@ fn try_first_transition_factor_plan<S: AsRef<[u8]> + Sync>(
                     if bucket_states_before == 0 {
                         0.0
                     } else {
-                        100.0
-                            * (1.0
-                                - bucket_states_after as f64 / bucket_states_before as f64)
+                        100.0 * (1.0 - bucket_states_after as f64 / bucket_states_before as f64)
                     },
                     quotient_started_at.elapsed().as_secs_f64() * 1000.0,
                 );
@@ -4252,10 +4227,7 @@ fn try_first_transition_factor_plan<S: AsRef<[u8]> + Sync>(
         } else if profiling && quotient_row_work > quotient_max_work {
             eprintln!(
                 "[glrmask/profile][vocab_first_transition_literal_row_quotient_skip] dfa_states={} active_byte_classes={} row_work={} max_work={}",
-                dfa.num_states,
-                active_suffix_class_count,
-                quotient_row_work,
-                quotient_max_work,
+                dfa.num_states, active_suffix_class_count, quotient_row_work, quotient_max_work,
             );
         }
     }
@@ -4276,7 +4248,8 @@ fn try_first_transition_factor_plan<S: AsRef<[u8]> + Sync>(
         let signature_started_at = Instant::now();
         let mut lease = scratch_pool.checkout(bucket.initial_outcomes.len(), dfa.num_groups);
         let worker = lease.worker_mut();
-        let state_group_size = vocab_state_group_size(bucket.initial_outcomes.len(), dfa.num_groups);
+        let state_group_size =
+            vocab_state_group_size(bucket.initial_outcomes.len(), dfa.num_groups);
         let (active_sigs, trie_walk) = trie_walk_chunk_signatures_from_prefix(
             dfa,
             strings,
@@ -4585,7 +4558,10 @@ fn compact_tokenizer_view_for_tokens<S: AsRef<[u8]>>(
             let target = source.trans(original, byte);
             if target != NONE {
                 let mapped = original_to_compact[target as usize];
-                debug_assert_ne!(mapped, NONE, "reachable token edge omitted from compact view");
+                debug_assert_ne!(
+                    mapped, NONE,
+                    "reachable token edge omitted from compact view"
+                );
                 transitions[compact_base + byte] = mapped;
             }
         }
@@ -4635,12 +4611,7 @@ fn raw_states_by_transition_diversity<S: AsRef<[u8]>>(
             (state, targets.len())
         })
         .collect::<Vec<_>>();
-    ranked.sort_unstable_by(|left, right| {
-        right
-            .1
-            .cmp(&left.1)
-            .then_with(|| left.0.cmp(&right.0))
-    });
+    ranked.sort_unstable_by(|left, right| right.1.cmp(&left.1).then_with(|| left.0.cmp(&right.0)));
     ranked.into_iter().map(|(state, _)| state).collect()
 }
 
@@ -4815,8 +4786,7 @@ fn try_pre_dfa_singleton_identity_probe<S: AsRef<[u8]>>(
     if strings.is_empty()
         || strings.len() > SINGLETON_PROBE_MAX_TOKENS
         || initial_states.len() < PRE_DFA_SINGLETON_PROBE_MIN_INITIAL_STATES
-        || initial_states.len().saturating_mul(strings.len())
-            < PRE_DFA_SINGLETON_PROBE_MIN_WORK
+        || initial_states.len().saturating_mul(strings.len()) < PRE_DFA_SINGLETON_PROBE_MIN_WORK
         || tokenizer.dfa().states.len() < INPUT_VIEW_COMPACT_MIN_STATES
     {
         return None;
@@ -4826,29 +4796,26 @@ fn try_pre_dfa_singleton_identity_probe<S: AsRef<[u8]>>(
     let state_order_started_at = profiling.then(Instant::now);
     let mut probe_states = raw_states_by_transition_diversity(tokenizer, initial_states, strings);
     probe_states.truncate(SINGLETON_PROBE_STATES);
-    let state_order_ms = state_order_started_at
-        .map_or(0.0, |started_at| started_at.elapsed().as_secs_f64() * 1000.0);
+    let state_order_ms = state_order_started_at.map_or(0.0, |started_at| {
+        started_at.elapsed().as_secs_f64() * 1000.0
+    });
 
     let view_started_at = profiling.then(Instant::now);
     let (probe_view, probe_initial) = finite_token_probe_view(tokenizer, &probe_states, strings);
-    let view_ms = view_started_at
-        .map_or(0.0, |started_at| started_at.elapsed().as_secs_f64() * 1000.0);
+    let view_ms = view_started_at.map_or(0.0, |started_at| {
+        started_at.elapsed().as_secs_f64() * 1000.0
+    });
 
     let build_started_at = Instant::now();
-    let probe_dfa = build_dfa_with_group_filter(
-        &probe_view,
-        disallowed_follows,
-        None,
-        active_groups,
-        None,
-    );
+    let probe_dfa =
+        build_dfa_with_group_filter(&probe_view, disallowed_follows, None, active_groups, None);
     let build_dfa_ms = build_started_at.elapsed().as_secs_f64() * 1000.0;
 
     let signature_started_at = profiling.then(Instant::now);
-    let distinct =
-        token_signatures_are_pairwise_distinct(&probe_dfa, strings, &probe_initial);
-    let signature_ms = signature_started_at
-        .map_or(0.0, |started_at| started_at.elapsed().as_secs_f64() * 1000.0);
+    let distinct = token_signatures_are_pairwise_distinct(&probe_dfa, strings, &probe_initial);
+    let signature_ms = signature_started_at.map_or(0.0, |started_at| {
+        started_at.elapsed().as_secs_f64() * 1000.0
+    });
 
     if profiling {
         eprintln!(
@@ -4869,7 +4836,10 @@ fn try_pre_dfa_singleton_identity_probe<S: AsRef<[u8]>>(
         return None;
     }
 
-    Some(((0..strings.len()).map(|token| vec![token]).collect(), build_dfa_ms))
+    Some((
+        (0..strings.len()).map(|token| vec![token]).collect(),
+        build_dfa_ms,
+    ))
 }
 
 /// Build a compact DFA containing only states reachable from `initial_states`
@@ -4895,7 +4865,12 @@ fn compact_dfa_for_tokens<S: AsRef<[u8]>>(
             byte_used[b as usize] = true;
         }
     }
-    let num_classes = dfa.byte_to_class.iter().copied().max().map_or(0usize, |m| m as usize + 1);
+    let num_classes = dfa
+        .byte_to_class
+        .iter()
+        .copied()
+        .max()
+        .map_or(0usize, |m| m as usize + 1);
     let mut class_used = vec![false; num_classes];
     for b in 0..=255u8 {
         if byte_used[b as usize] {
@@ -4966,16 +4941,26 @@ fn compact_dfa_for_tokens<S: AsRef<[u8]>>(
     }
 
     // Compact per-state arrays.
-    let compact_finalizers: Vec<SmallVec<[usize; 4]>> =
-        compact_to_original.iter().map(|&s| dfa.finalizers[s].clone()).collect();
-    let compact_is_dead_end: Vec<bool> =
-        compact_to_original.iter().map(|&s| dfa.is_dead_end[s]).collect();
-    let compact_completion_hash: Vec<u64> =
-        compact_to_original.iter().map(|&s| dfa.completion_hash[s]).collect();
-    let compact_self_loop: Vec<U8Set> =
-        compact_to_original.iter().map(|&s| dfa.self_loop_bytes[s]).collect();
-    let compact_pfg: Vec<SmallVec<[usize; 4]>> =
-        compact_to_original.iter().map(|&s| dfa.possible_future_groups[s].clone()).collect();
+    let compact_finalizers: Vec<SmallVec<[usize; 4]>> = compact_to_original
+        .iter()
+        .map(|&s| dfa.finalizers[s].clone())
+        .collect();
+    let compact_is_dead_end: Vec<bool> = compact_to_original
+        .iter()
+        .map(|&s| dfa.is_dead_end[s])
+        .collect();
+    let compact_completion_hash: Vec<u64> = compact_to_original
+        .iter()
+        .map(|&s| dfa.completion_hash[s])
+        .collect();
+    let compact_self_loop: Vec<U8Set> = compact_to_original
+        .iter()
+        .map(|&s| dfa.self_loop_bytes[s])
+        .collect();
+    let compact_pfg: Vec<SmallVec<[usize; 4]>> = compact_to_original
+        .iter()
+        .map(|&s| dfa.possible_future_groups[s].clone())
+        .collect();
 
     // Remap initial states.
     let compact_initial: Vec<usize> = initial_states
@@ -4984,7 +4969,9 @@ fn compact_dfa_for_tokens<S: AsRef<[u8]>>(
         .collect();
 
     let compact_dfa = Dfa {
-        start_state: if dfa.start_state < original_to_compact.len() && original_to_compact[dfa.start_state] != u32::MAX {
+        start_state: if dfa.start_state < original_to_compact.len()
+            && original_to_compact[dfa.start_state] != u32::MAX
+        {
             original_to_compact[dfa.start_state] as usize
         } else {
             0
@@ -5037,9 +5024,7 @@ pub fn find_vocab_equivalence_classes_with_group_filter_profiled<S: AsRef<[u8]> 
 /// The exact authority pass may merge these preliminary classes but does not
 /// split them, so this is a conservative refinement of the final vocabulary
 /// quotient. If factorization cannot prove a merge, return singletons.
-pub fn find_vocab_first_transition_preclasses_with_group_filter_profiled<
-    S: AsRef<[u8]> + Sync,
->(
+pub fn find_vocab_first_transition_preclasses_with_group_filter_profiled<S: AsRef<[u8]> + Sync>(
     tokenizer: &TokenizerView,
     strings: &[S],
     initial_states: &[usize],
@@ -5157,7 +5142,9 @@ fn find_vocab_equivalence_classes_with_group_filter_profiled_impl<S: AsRef<[u8]>
         &TokenizerView,
         &[usize],
         Option<&Vec<usize>>,
-    ) = if let Some((ref compact_view, ref compact_initial, ref compact_to_original)) = input_compacted {
+    ) = if let Some((ref compact_view, ref compact_initial, ref compact_to_original)) =
+        input_compacted
+    {
         (compact_view, compact_initial, Some(compact_to_original))
     } else {
         (tokenizer, initial_states, None)
@@ -5198,11 +5185,12 @@ fn find_vocab_equivalence_classes_with_group_filter_profiled_impl<S: AsRef<[u8]>
     let compact_dfa_started_at = profiling.then(Instant::now);
     let compacted = compact_dfa_for_tokens(dfa.as_ref(), initial_states_for_dfa, strings);
     let compact_dfa_ms = elapsed_ms(compact_dfa_started_at);
-    let (dfa_ref, initial_states_ref, compact_to_original): (&Dfa, &[usize], Option<&Vec<usize>>) = if let Some((ref cdfa, ref cstates, ref compact_to_original)) = compacted {
-        (cdfa, cstates, Some(compact_to_original))
-    } else {
-        (&dfa, initial_states_for_dfa, None)
-    };
+    let (dfa_ref, initial_states_ref, compact_to_original): (&Dfa, &[usize], Option<&Vec<usize>>) =
+        if let Some((ref cdfa, ref cstates, ref compact_to_original)) = compacted {
+            (cdfa, cstates, Some(compact_to_original))
+        } else {
+            (&dfa, initial_states_for_dfa, None)
+        };
     if let Some((position, &state)) = initial_states_ref
         .iter()
         .enumerate()
@@ -5224,7 +5212,10 @@ fn find_vocab_equivalence_classes_with_group_filter_profiled_impl<S: AsRef<[u8]>
     let num_initial_states = initial_states_ref.len();
 
     if num_initial_states == 0 || num_tokens == 0 {
-        return (BTreeSet::from_iter(vec![(0..num_tokens).collect()]), build_dfa_ms);
+        return (
+            BTreeSet::from_iter(vec![(0..num_tokens).collect()]),
+            build_dfa_ms,
+        );
     }
 
     if initial_states_ref
@@ -5246,7 +5237,10 @@ fn find_vocab_equivalence_classes_with_group_filter_profiled_impl<S: AsRef<[u8]>
                 elapsed_ms(total_started_at),
             );
         }
-        return (BTreeSet::from_iter(vec![(0..num_tokens).collect()]), build_dfa_ms);
+        return (
+            BTreeSet::from_iter(vec![(0..num_tokens).collect()]),
+            build_dfa_ms,
+        );
     }
 
     let lexical_order_started_at = profiling.then(Instant::now);
@@ -5255,8 +5249,8 @@ fn find_vocab_equivalence_classes_with_group_filter_profiled_impl<S: AsRef<[u8]>
         FirstTransitionFactorMode::Environment => first_transition_factor_enabled(),
         FirstTransitionFactorMode::Force => true,
     };
-    let lexical_order_needed = (num_tokens >= TRIE_WALK_MIN_TOKENS && !*TRIE_WALK_DISABLED)
-        || factor_enabled;
+    let lexical_order_needed =
+        (num_tokens >= TRIE_WALK_MIN_TOKENS && !*TRIE_WALK_DISABLED) || factor_enabled;
     let lexical_order = lexical_order_needed.then(|| token_indices_in_lexical_order(strings));
     let mut sort_tokens_ms = elapsed_ms(lexical_order_started_at);
     let scratch_pool = Arc::new(ScratchPool::default());
@@ -5327,7 +5321,10 @@ fn find_vocab_equivalence_classes_with_group_filter_profiled_impl<S: AsRef<[u8]>
     let factor_authority_states = factor_plan.as_ref().and_then(|plan| {
         factor_state_refiner.as_mut().map(|refine_states| {
             let positions = refine_states(&plan.representative_tokens);
-            assert!(!positions.is_empty(), "factor state refinement returned no authority states");
+            assert!(
+                !positions.is_empty(),
+                "factor state refinement returned no authority states"
+            );
             let mut seen = vec![false; initial_states_ref.len()];
             let mut states = Vec::with_capacity(positions.len());
             for position in positions {
@@ -5353,7 +5350,9 @@ fn find_vocab_equivalence_classes_with_group_filter_profiled_impl<S: AsRef<[u8]>
             factor_authority_states.is_some(),
             num_initial_states,
             authority_states.len(),
-            factor_plan.as_ref().map_or(num_tokens, |plan| plan.representative_tokens.len()),
+            factor_plan
+                .as_ref()
+                .map_or(num_tokens, |plan| plan.representative_tokens.len()),
         );
     }
 
@@ -5437,17 +5436,14 @@ fn find_vocab_equivalence_classes_with_group_filter_profiled_impl<S: AsRef<[u8]>
     // Each worker deliberately performs one sequential full-trie walk: the
     // outer state slabs are the parallelism, avoiding nested Rayon work on the
     // token axis.
-    let parallel_state_batch_size = vocab_parallel_state_batch_size(
-        num_authority_states,
-        num_tokens,
-    )
-    .filter(|&size| {
-        factor_plan.is_none()
-            && num_tokens >= TRIE_WALK_MIN_TOKENS
-            && !*TRIE_WALK_DISABLED
-            && rayon::current_num_threads() > 1
-            && num_authority_states > size
-    });
+    let parallel_state_batch_size =
+        vocab_parallel_state_batch_size(num_authority_states, num_tokens).filter(|&size| {
+            factor_plan.is_none()
+                && num_tokens >= TRIE_WALK_MIN_TOKENS
+                && !*TRIE_WALK_DISABLED
+                && rayon::current_num_threads() > 1
+                && num_authority_states > size
+        });
     if let Some(parallel_batch_size) = parallel_state_batch_size {
         let use_parallel_singleton_probe = analysis_token_count <= SINGLETON_PROBE_MAX_TOKENS
             && num_authority_states > SINGLETON_PROBE_STATES
@@ -5499,8 +5495,7 @@ fn find_vocab_equivalence_classes_with_group_filter_profiled_impl<S: AsRef<[u8]>
 
         let refinement_started_at = Instant::now();
         let mut signatures_by_token = vec![HASH_SEED3; num_tokens];
-        for (batch_index, (batch_signatures, batch_stats)) in
-            batch_results.into_iter().enumerate()
+        for (batch_index, (batch_signatures, batch_stats)) in batch_results.into_iter().enumerate()
         {
             if profiling {
                 trie_walk_stats.add_assign(batch_stats);
@@ -5582,15 +5577,11 @@ fn find_vocab_equivalence_classes_with_group_filter_profiled_impl<S: AsRef<[u8]>
         let batch_end = (batch_start + current_batch_size).min(num_authority_states);
         let batch = &ordered_states[batch_start..batch_end];
         let state_group_size = vocab_state_group_size(batch.len(), num_groups);
-        let use_trie_walk = active_indices.len() >= TRIE_WALK_MIN_TOKENS
-            && !*TRIE_WALK_DISABLED;
+        let use_trie_walk = active_indices.len() >= TRIE_WALK_MIN_TOKENS && !*TRIE_WALK_DISABLED;
         let use_sequential_trie = use_trie_walk
             && num_authority_states <= batch_size
             && vocab_sequential_trie_work_max() > 0
-            && active_indices
-                .len()
-                .saturating_mul(batch.len())
-                <= vocab_sequential_trie_work_max();
+            && active_indices.len().saturating_mul(batch.len()) <= vocab_sequential_trie_work_max();
         sequential_trie_batches += usize::from(use_sequential_trie);
         used_trie_walk |= use_trie_walk;
         let active_sigs: Vec<(usize, u64)> = if use_trie_walk {
@@ -5605,10 +5596,9 @@ fn find_vocab_equivalence_classes_with_group_filter_profiled_impl<S: AsRef<[u8]>
             debug_assert_eq!(sorted_indices.len(), active_indices.len());
             let signature_started_at = profiling.then(Instant::now);
             let mut flat_results = Vec::with_capacity(sorted_indices.len());
-            if let (Some(scratch), Some(trie_state)) = (
-                single_thread_scratch.as_mut(),
-                single_thread_trie.as_mut(),
-            ) {
+            if let (Some(scratch), Some(trie_state)) =
+                (single_thread_scratch.as_mut(), single_thread_trie.as_mut())
+            {
                 let (chunk_result, chunk_stats) = trie_walk_chunk_signatures(
                     dfa_ref,
                     strings,
@@ -5679,9 +5669,7 @@ fn find_vocab_equivalence_classes_with_group_filter_profiled_impl<S: AsRef<[u8]>
             // partition or grammar shape.  Larger matrices retain the
             // parallel path.
             const SEQUENTIAL_DIRECT_SIGNATURE_MAX_PAIRS: usize = 256;
-            let use_sequential_direct = active_indices
-                .len()
-                .saturating_mul(batch.len())
+            let use_sequential_direct = active_indices.len().saturating_mul(batch.len())
                 <= SEQUENTIAL_DIRECT_SIGNATURE_MAX_PAIRS;
             let result = if let Some(scratch) = single_thread_scratch.as_mut() {
                 active_indices
@@ -5752,10 +5740,7 @@ fn find_vocab_equivalence_classes_with_group_filter_profiled_impl<S: AsRef<[u8]>
         let mut refinement: HashMap<(usize, u64), Vec<usize>> =
             HashMap::with_capacity(active_sigs.len() / 2);
         for (ti, sig) in active_sigs {
-            refinement
-                .entry((partition[ti], sig))
-                .or_default()
-                .push(ti);
+            refinement.entry((partition[ti], sig)).or_default().push(ti);
         }
 
         let mut new_active = Vec::with_capacity(active_indices.len());
@@ -5806,8 +5791,7 @@ fn find_vocab_equivalence_classes_with_group_filter_profiled_impl<S: AsRef<[u8]>
                 let total_len = representatives
                     .iter()
                     .map(|&representative| {
-                        let class_idx =
-                            plan.preliminary_class_for_representative[representative];
+                        let class_idx = plan.preliminary_class_for_representative[representative];
                         debug_assert_ne!(class_idx, usize::MAX);
                         plan.preliminary_classes[class_idx].len()
                     })
@@ -5985,9 +5969,7 @@ pub fn find_vocab_equivalence_classes_with_group_filter<S: AsRef<[u8]> + Sync>(
 #[cfg(test)]
 mod shared_base_tests {
     use super::*;
-    use crate::l2p::compat::{
-        FlatDfa, FlatDfaState, TokenizerView,
-    };
+    use crate::l2p::compat::{FlatDfa, FlatDfaState, TokenizerView};
     use std::sync::Arc;
 
     #[test]
@@ -6016,7 +5998,9 @@ mod shared_base_tests {
         assert!(first_transition_factor_parallel_buckets_default(4, 50_000));
         assert!(first_transition_factor_parallel_buckets_default(8, 50_000));
         assert!(first_transition_factor_parallel_buckets_default(12, 4_989));
-        assert!(!first_transition_factor_parallel_buckets_default(12, 12_000));
+        assert!(!first_transition_factor_parallel_buckets_default(
+            12, 12_000
+        ));
     }
 
     #[test]
@@ -6051,8 +6035,7 @@ mod shared_base_tests {
         let bounded_classes = compute_byte_classes(bounded.dfa());
 
         assert_eq!(
-            full_classes[b'!' as usize],
-            full_classes[b'a' as usize],
+            full_classes[b'!' as usize], full_classes[b'a' as usize],
             "the bytes are genuinely equivalent in the full view",
         );
         assert_ne!(
@@ -6061,8 +6044,7 @@ mod shared_base_tests {
             "relevant-byte pruning splits that class in the bounded view",
         );
         assert_ne!(
-            bounded_classes[b'!' as usize],
-            bounded_classes[b'a' as usize],
+            bounded_classes[b'!' as usize], bounded_classes[b'a' as usize],
             "classes recomputed from the bounded view must reflect that split",
         );
         let tokens = [b"a".as_slice(), b"aa".as_slice()];
@@ -6106,7 +6088,6 @@ mod shared_base_tests {
             transitions: Arc::from(transitions),
         }
     }
-
 
     fn first_transition_factor_dfa() -> FlatDfa {
         let state_count = 8usize;
@@ -6195,7 +6176,6 @@ mod shared_base_tests {
             transitions: Arc::from(transitions),
         }
     }
-
 
     #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
     struct ExactSuffixObservation {
@@ -6303,12 +6283,8 @@ mod shared_base_tests {
             if suffix_runs.contains_key(&position) {
                 continue;
             }
-            let (suffix_end, suffix_latest) = exact_run_from_state(
-                dfa,
-                &token[position..],
-                dfa.start_state,
-                true,
-            );
+            let (suffix_end, suffix_latest) =
+                exact_run_from_state(dfa, &token[position..], dfa.start_state, true);
             let mut edges = suffix_latest
                 .into_iter()
                 .enumerate()
@@ -6341,15 +6317,14 @@ mod shared_base_tests {
         for (&position, (_, edges)) in &suffix_runs {
             let blocked = disallowed_at.get(&position).cloned();
             for &(gid, target) in edges {
-                if blocked.as_ref().is_some_and(|blocked| blocked.contains(gid)) {
+                if blocked
+                    .as_ref()
+                    .is_some_and(|blocked| blocked.contains(gid))
+                {
                     continue;
                 }
                 if target < token.len() {
-                    exact_intersect_disallowed(
-                        &mut disallowed_at,
-                        target,
-                        dfa.disallowed_for(gid),
-                    );
+                    exact_intersect_disallowed(&mut disallowed_at, target, dfa.disallowed_for(gid));
                 }
             }
         }
@@ -6361,8 +6336,7 @@ mod shared_base_tests {
                 .iter()
                 .filter(|(gid, _)| !blocked.is_some_and(|blocked| blocked.contains(*gid)))
                 .map(|&(gid, target)| {
-                    let child = (target < token.len())
-                        .then(|| Box::new(built[&target].clone()));
+                    let child = (target < token.len()).then(|| Box::new(built[&target].clone()));
                     (gid, child)
                 })
                 .collect();
@@ -6378,8 +6352,7 @@ mod shared_base_tests {
         let edges = root_matches
             .into_iter()
             .map(|(gid, position)| {
-                let child = (position < token.len())
-                    .then(|| Box::new(built[&position].clone()));
+                let child = (position < token.len()).then(|| Box::new(built[&position].clone()));
                 (gid, child)
             })
             .collect();
@@ -6411,8 +6384,8 @@ mod shared_base_tests {
             flat_dfa: first_transition_factor_dfa(),
         };
         let tokens: Vec<&[u8]> = vec![
-            b"a", b"A", b"aa", b"Aa", b"ax", b"Ax", b"ay", b"Ay", b"b", b"bx",
-            b"by", b"p", b"q", b"pp", b"qq", b"c", b"d", b"ax", b"x", b"x",
+            b"a", b"A", b"aa", b"Aa", b"ax", b"Ax", b"ay", b"Ay", b"b", b"bx", b"by", b"p", b"q",
+            b"pp", b"qq", b"c", b"d", b"ax", b"x", b"x",
         ];
         let states = (0..view.dfa().states.len()).collect::<Vec<_>>();
         let byte_classes = compute_byte_classes(view.dfa());
@@ -6474,9 +6447,18 @@ mod shared_base_tests {
             false,
         );
 
-        assert_eq!(ordinary, direct, "ordinary hash partition must match direct observations");
-        assert_eq!(factored, direct, "factored partition must match direct observations");
-        assert_eq!(staged, direct, "staged factor/state refinement must remain exact");
+        assert_eq!(
+            ordinary, direct,
+            "ordinary hash partition must match direct observations"
+        );
+        assert_eq!(
+            factored, direct,
+            "factored partition must match direct observations"
+        );
+        assert_eq!(
+            staged, direct,
+            "staged factor/state refinement must remain exact"
+        );
         assert!(
             factored
                 .iter()
@@ -6484,15 +6466,18 @@ mod shared_base_tests {
             "duplicate byte strings must merge: {factored:?}",
         );
         assert!(
-            factored.iter().any(|class| class.contains(&11) && class.contains(&12)),
+            factored
+                .iter()
+                .any(|class| class.contains(&11) && class.contains(&12)),
             "the final authority pass must merge equivalent tokens from different leading classes",
         );
         assert!(
-            factored.iter().any(|class| class.contains(&18) && class.contains(&19)),
+            factored
+                .iter()
+                .any(|class| class.contains(&18) && class.contains(&19)),
             "a first transition into a finalizing dead-end state must be preserved",
         );
     }
-
 
     #[test]
     fn first_transition_factor_randomized_direct_differential() {
@@ -6518,8 +6503,7 @@ mod shared_base_tests {
                     }
                 }
                 // Guarantee one nontrivial semantic byte class in every case.
-                transitions[state * 256 + b'A' as usize] =
-                    transitions[state * 256 + b'a' as usize];
+                transitions[state * 256 + b'A' as usize] = transitions[state * 256 + b'a' as usize];
             }
             let states = (0..state_count)
                 .map(|_| {
@@ -6602,15 +6586,13 @@ mod shared_base_tests {
                 None,
                 false,
             );
-            let analysis_dfa = build_dfa_with_group_filter(
-                &view,
-                &disallowed,
-                Some(&byte_classes),
-                None,
-                None,
-            );
+            let analysis_dfa =
+                build_dfa_with_group_filter(&view, &disallowed, Some(&byte_classes), None, None);
 
-            assert_eq!(factored, ordinary, "factored/reference mismatch at seed {seed}");
+            assert_eq!(
+                factored, ordinary,
+                "factored/reference mismatch at seed {seed}"
+            );
 
             // Directly certify the quotient invariant without relying on hash
             // equality: within one semantic first-byte class, sources with the
@@ -6625,9 +6607,10 @@ mod shared_base_tests {
                     } else {
                         analysis_dfa.transition(source, first_byte)
                     };
-                    let observation =
-                        exact_state_observation(&analysis_dfa, token, source);
-                    if let Some(previous) = observations.insert(effective_target, observation.clone()) {
+                    let observation = exact_state_observation(&analysis_dfa, token, source);
+                    if let Some(previous) =
+                        observations.insert(effective_target, observation.clone())
+                    {
                         assert_eq!(
                             observation, previous,
                             "first-successor invariant mismatch at seed {seed} token={token:?} source={source}",
@@ -6715,10 +6698,8 @@ mod shared_base_tests {
         let initial_states = vec![0usize, 1, 2];
         let disallowed = BTreeMap::<u32, BitSet>::new();
         let full = build_dfa_with_group_filter(&view, &disallowed, None, None, None);
-        let (probe_view, probe_initial) =
-            finite_token_probe_view(&view, &initial_states, &tokens);
-        let probe =
-            build_dfa_with_group_filter(&probe_view, &disallowed, None, None, None);
+        let (probe_view, probe_initial) = finite_token_probe_view(&view, &initial_states, &tokens);
+        let probe = build_dfa_with_group_filter(&probe_view, &disallowed, None, None, None);
 
         assert_eq!(
             token_signatures_for_states(&probe, &tokens, &probe_initial),
@@ -6728,7 +6709,9 @@ mod shared_base_tests {
 
     #[test]
     fn singleton_identity_probe_requires_pairwise_distinct_signatures() {
-        let view = TokenizerView { flat_dfa: sample_dfa() };
+        let view = TokenizerView {
+            flat_dfa: sample_dfa(),
+        };
         let disallowed = BTreeMap::<u32, BitSet>::new();
         let dfa = build_dfa_with_group_filter(&view, &disallowed, None, None, None);
         let states = vec![0usize, 1, 2];
@@ -6745,7 +6728,9 @@ mod shared_base_tests {
 
     #[test]
     fn trie_live_frontier_signatures_match_independent_token_scans() {
-        let view = TokenizerView { flat_dfa: sample_dfa() };
+        let view = TokenizerView {
+            flat_dfa: sample_dfa(),
+        };
         let disallowed = BTreeMap::<u32, BitSet>::new();
         let dfa = build_dfa_with_group_filter(&view, &disallowed, None, None, None);
         let states = vec![0usize, 1, 2];
@@ -6831,7 +6816,9 @@ mod shared_base_tests {
 
     #[test]
     fn sparse_live_clean_signature_matches_dense_fold() {
-        let view = TokenizerView { flat_dfa: sample_dfa() };
+        let view = TokenizerView {
+            flat_dfa: sample_dfa(),
+        };
         let disallowed = BTreeMap::<u32, BitSet>::new();
         let dfa = build_dfa_with_group_filter(&view, &disallowed, None, None, None);
         let state_count = 6usize;
@@ -6864,7 +6851,9 @@ mod shared_base_tests {
 
     #[test]
     fn sparse_dirty_signature_matches_dense_fold_with_live_and_dead_dirty_states() {
-        let view = TokenizerView { flat_dfa: sample_dfa() };
+        let view = TokenizerView {
+            flat_dfa: sample_dfa(),
+        };
         let disallowed = BTreeMap::<u32, BitSet>::new();
         let dfa = build_dfa_with_group_filter(&view, &disallowed, None, None, None);
         let state_count = 6usize;
@@ -6880,7 +6869,14 @@ mod shared_base_tests {
             ),
             // Dense side of the crossover.
             (
-                [0, STATE_NONE, 2 % dfa.num_states, STATE_NONE, 1 % dfa.num_states, 0],
+                [
+                    0,
+                    STATE_NONE,
+                    2 % dfa.num_states,
+                    STATE_NONE,
+                    1 % dfa.num_states,
+                    0,
+                ],
                 vec![0usize, 2, 4, 5],
             ),
         ] {
@@ -6893,9 +6889,7 @@ mod shared_base_tests {
             // Exercise both a live dirty state and a dirty state whose DFA path
             // has already died. Missing DAG nodes intentionally hash as zero in
             // both implementations, isolating only the polynomial baseline.
-            for &(state_index, gid, position) in
-                &[(1usize, 0usize, 1u32), (2usize, 0usize, 2u32)]
-            {
+            for &(state_index, gid, position) in &[(1usize, 0usize, 1u32), (2usize, 0usize, 2u32)] {
                 scratch.dirty_state_flags[state_index] = 1;
                 set_dirty_state_bit(&mut scratch.dirty_state_bits, state_index);
                 let flat_dirty = state_index * scratch.dirty_words + gid / 64;
@@ -7037,7 +7031,12 @@ mod shared_base_tests {
         let view = TokenizerView {
             flat_dfa: sample_dfa(),
         };
-        assert!(view.dfa().transitions.iter().any(|&target| target == u32::MAX));
+        assert!(
+            view.dfa()
+                .transitions
+                .iter()
+                .any(|&target| target == u32::MAX)
+        );
 
         let tokens: Vec<&[u8]> = vec![b"a", b"b", b"aa"];
         let disallowed = BTreeMap::<u32, BitSet>::new();
@@ -7054,12 +7053,17 @@ mod shared_base_tests {
             )
         });
 
-        assert!(result.is_ok(), "dead transitions are not invalid state coordinates");
+        assert!(
+            result.is_ok(),
+            "dead transitions are not invalid state coordinates"
+        );
     }
 
     #[test]
     fn shared_analysis_dfa_cache_matches_uncached_vocab_equivalence() {
-        let view = TokenizerView { flat_dfa: sample_dfa() };
+        let view = TokenizerView {
+            flat_dfa: sample_dfa(),
+        };
         let tokens: Vec<&[u8]> = vec![b"a", b"b", b"aa", b"ba"];
         let initial_states = vec![0usize, 1, 2];
         let disallowed = BTreeMap::<u32, BitSet>::new();
@@ -7103,7 +7107,9 @@ mod shared_base_tests {
 
     #[test]
     fn shared_analysis_dfa_cache_keys_filtered_views_and_normalized_follows() {
-        let view = TokenizerView { flat_dfa: sample_dfa() };
+        let view = TokenizerView {
+            flat_dfa: sample_dfa(),
+        };
         let tokens: Vec<&[u8]> = vec![b"a", b"b", b"aa", b"ba"];
         let initial_states = vec![0usize, 1, 2];
         let cache = SharedVocabAnalysisDfaCache::default();
@@ -7236,7 +7242,9 @@ mod shared_base_tests {
 
     #[test]
     fn dense_trie_suffix_dag_matches_generic_and_precomputed_root() {
-        let view = TokenizerView { flat_dfa: sample_dfa() };
+        let view = TokenizerView {
+            flat_dfa: sample_dfa(),
+        };
         let disallowed = BTreeMap::<u32, BitSet>::new();
         let dfa = build_dfa_with_group_filter(&view, &disallowed, None, None, None);
         let token = b"abba";
@@ -7375,7 +7383,9 @@ mod shared_base_tests {
 
     #[test]
     fn reusable_single_target_disallowed_matches_fresh_root_and_fallback() {
-        let view = TokenizerView { flat_dfa: sample_dfa() };
+        let view = TokenizerView {
+            flat_dfa: sample_dfa(),
+        };
         let disallowed = BTreeMap::<u32, BitSet>::new();
         let dfa = build_dfa_with_group_filter(&view, &disallowed, None, None, None);
 
@@ -7394,8 +7404,14 @@ mod shared_base_tests {
         let reused_nodes =
             hash_single_target_suffix_dense_impl(&dfa, direct_token, &mut direct_reused, true);
         assert_eq!(reused_nodes, fresh_nodes);
-        assert_eq!(direct_reused.single_target_hash_pos, direct_fresh.single_target_hash_pos);
-        assert_eq!(direct_reused.single_target_hash, direct_fresh.single_target_hash);
+        assert_eq!(
+            direct_reused.single_target_hash_pos,
+            direct_fresh.single_target_hash_pos
+        );
+        assert_eq!(
+            direct_reused.single_target_hash,
+            direct_fresh.single_target_hash
+        );
 
         // This longer suffix discovers an interior terminal and therefore
         // exercises the precomputed-root fallback into the dense suffix DAG.
@@ -7403,22 +7419,14 @@ mod shared_base_tests {
         let mut fallback_fresh = Scratch::new(1, dfa.num_groups);
         fallback_fresh.single_target_pos = 1;
         fallback_fresh.single_target_gids.push(0);
-        let fresh_nodes = hash_single_target_suffix_dense_impl(
-            &dfa,
-            fallback_token,
-            &mut fallback_fresh,
-            false,
-        );
+        let fresh_nodes =
+            hash_single_target_suffix_dense_impl(&dfa, fallback_token, &mut fallback_fresh, false);
 
         let mut fallback_reused = Scratch::new(1, dfa.num_groups);
         fallback_reused.single_target_pos = 1;
         fallback_reused.single_target_gids.push(0);
-        let reused_nodes = hash_single_target_suffix_dense_impl(
-            &dfa,
-            fallback_token,
-            &mut fallback_reused,
-            true,
-        );
+        let reused_nodes =
+            hash_single_target_suffix_dense_impl(&dfa, fallback_token, &mut fallback_reused, true);
         assert_eq!(reused_nodes, fresh_nodes);
         for pos in 1..fallback_token.len() {
             let fresh_hash = fallback_fresh

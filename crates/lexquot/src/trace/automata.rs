@@ -1,6 +1,6 @@
 //! Boolean residual sharing and the deliberately separate product-root baseline.
 
-use super::{limit, PreparationStats, PrepareOptions, TraceBudget, TraceRequest};
+use super::{PreparationStats, PrepareOptions, TraceBudget, TraceRequest, limit};
 use crate::{AnalysisError, Expr};
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::collections::VecDeque;

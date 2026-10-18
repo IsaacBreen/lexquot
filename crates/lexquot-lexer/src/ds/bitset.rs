@@ -35,10 +35,7 @@ impl BitSet {
     pub fn new(len: usize) -> Self {
         let mut words = SmallVec::new();
         words.resize(len.div_ceil(64), 0);
-        Self {
-            words,
-            len,
-        }
+        Self { words, len }
     }
 
     /// Construct directly from sparse set-bit indices. Static tokenizer
@@ -80,10 +77,7 @@ impl BitSet {
     pub fn all(len: usize) -> Self {
         let mut words = SmallVec::new();
         words.resize(len.div_ceil(64), u64::MAX);
-        let mut set = Self {
-            words,
-            len,
-        };
+        let mut set = Self { words, len };
         set.mask_unused_bits();
         set
     }
@@ -135,7 +129,10 @@ impl BitSet {
     }
 
     pub fn count_ones(&self) -> usize {
-        self.words.iter().map(|word| word.count_ones() as usize).sum()
+        self.words
+            .iter()
+            .map(|word| word.count_ones() as usize)
+            .sum()
     }
 
     pub fn is_zero(&self) -> bool {
@@ -355,8 +352,6 @@ impl Iterator for BitIter {
     }
 }
 
-
-
 #[cfg(test)]
 mod tests {
     use serde::{Deserialize, Serialize};
@@ -427,7 +422,10 @@ mod tests {
         let delta = left.union_with_delta(&right);
 
         assert_eq!(delta.iter_ones().collect::<Vec<_>>(), vec![63, 65]);
-        assert_eq!(left.iter_ones().collect::<Vec<_>>(), vec![0, 63, 64, 65, 129]);
+        assert_eq!(
+            left.iter_ones().collect::<Vec<_>>(),
+            vec![0, 63, 64, 65, 129]
+        );
     }
 
     #[test]

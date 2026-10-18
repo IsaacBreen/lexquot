@@ -2,7 +2,7 @@
 //! The oracle reads the original DFA tables and enumerates lexical segmentations;
 //! it does not use PreparedTrace, canonical residual IDs or trace-language nodes.
 use lexquot::trace::{PrepareOptions, PreparedTrace, TraceDfa};
-use lexquot::{parse_regex, Vocab};
+use lexquot::{Vocab, parse_regex};
 
 fn words(alphabet: &[u8], max: usize) -> Vec<Vec<u8>> {
     let mut all = vec![vec![]];

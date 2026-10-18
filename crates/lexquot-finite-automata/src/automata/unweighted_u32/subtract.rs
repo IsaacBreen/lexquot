@@ -57,8 +57,8 @@ pub fn subtract(left: &DFA, right: &DFA) -> DFA {
         let left_state = &left.states[product.left as usize];
         let right_state = product.right.map(|state| &right.states[state as usize]);
 
-        result.states[result_state as usize].is_accepting = left_state.is_accepting
-            && !right_state.is_some_and(|state| state.is_accepting);
+        result.states[result_state as usize].is_accepting =
+            left_state.is_accepting && !right_state.is_some_and(|state| state.is_accepting);
 
         for (&label, &left_next) in &left_state.transitions {
             let right_next = right_state.and_then(|state| state.transitions.get(&label).copied());

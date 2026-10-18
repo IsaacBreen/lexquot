@@ -169,12 +169,8 @@ pub fn determinize(nfa: &NFA) -> DFA {
             if next_key.is_empty() {
                 continue;
             }
-            let next_dfa_state = get_or_create_subset_state(
-                &mut dfa,
-                &mut subset_map,
-                &mut worklist,
-                next_key,
-            );
+            let next_dfa_state =
+                get_or_create_subset_state(&mut dfa, &mut subset_map, &mut worklist, next_key);
             dfa.add_transition(dfa_state, label, next_dfa_state);
         }
 
@@ -237,7 +233,10 @@ mod tests {
             let mut labels = BTreeMap::<Label, BTreeSet<u32>>::new();
             for &state in &subset {
                 for (&label, targets) in &nfa.states[state as usize].transitions {
-                    labels.entry(label).or_default().extend(targets.iter().copied());
+                    labels
+                        .entry(label)
+                        .or_default()
+                        .extend(targets.iter().copied());
                 }
             }
             for (label, targets) in labels {
@@ -279,7 +278,8 @@ mod tests {
             }
             for lane in 0..3u32 {
                 if (source as u32 + seed + lane) % 2 == 0 {
-                    let target = source + 1 + ((source as u32 * 7 + seed + lane * 3) as usize % remaining);
+                    let target =
+                        source + 1 + ((source as u32 * 7 + seed + lane * 3) as usize % remaining);
                     let label = ((source as i32 * 11 + lane as i32 * 5 + seed as i32) % 13) - 6;
                     nfa.add_transition(source as u32, label, target as u32);
                     if (source as u32 + seed + lane) % 4 == 0 {

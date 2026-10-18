@@ -139,10 +139,11 @@ pub fn reindex_minimized_acyclic_order(dfa: &DFA) -> AcyclicDfaReindex {
         };
     }
 
-    debug_assert!(dfa
-        .states
-        .iter()
-        .all(|state| state.is_accepting || !state.transitions.is_empty()));
+    debug_assert!(
+        dfa.states
+            .iter()
+            .all(|state| state.is_accepting || !state.transitions.is_empty())
+    );
 
     let topo = reverse_topological_order(dfa);
     let mut state_map = vec![u32::MAX; dfa.states.len()];
@@ -199,13 +200,11 @@ pub fn minimize_acyclic(dfa: &DFA) -> DFA {
         return dfa.clone();
     }
 
-    let profile = std::env::var_os("LEXQUOT_PROFILE_COMPILE").is_some()
-        && dfa.states.len() >= 1024;
+    let profile = std::env::var_os("LEXQUOT_PROFILE_COMPILE").is_some() && dfa.states.len() >= 1024;
     let total_started = profile.then(std::time::Instant::now);
     let topo_started = profile.then(std::time::Instant::now);
     let topo = reverse_topological_order(dfa);
-    let topo_ms = topo_started
-        .map_or(0.0, |started| started.elapsed().as_secs_f64() * 1000.0);
+    let topo_ms = topo_started.map_or(0.0, |started| started.elapsed().as_secs_f64() * 1000.0);
 
     const DEAD_CLASS: usize = 0;
     let dead_signature = StateSignature {
@@ -221,12 +220,7 @@ pub fn minimize_acyclic(dfa: &DFA) -> DFA {
 
     let classify_started = profile.then(std::time::Instant::now);
     for &state_id in &topo {
-        let signature = state_signature(
-            state_id,
-            dfa,
-            &class_of_state,
-            DEAD_CLASS,
-        );
+        let signature = state_signature(state_id, dfa, &class_of_state, DEAD_CLASS);
 
         let class_id = if let Some(&existing) = signature_to_class.get(&signature) {
             existing
@@ -239,21 +233,20 @@ pub fn minimize_acyclic(dfa: &DFA) -> DFA {
         };
         class_of_state[state_id] = class_id;
     }
-    let classify_ms = classify_started
-        .map_or(0.0, |started| started.elapsed().as_secs_f64() * 1000.0);
+    let classify_ms =
+        classify_started.map_or(0.0, |started| started.elapsed().as_secs_f64() * 1000.0);
 
     let build_started = profile.then(std::time::Instant::now);
-    let minimized = build_minimized_acyclic_dfa(
-        dfa,
-        &class_of_state,
-        &class_representatives,
-        DEAD_CLASS,
-    );
+    let minimized =
+        build_minimized_acyclic_dfa(dfa, &class_of_state, &class_representatives, DEAD_CLASS);
     if let Some(total_started) = total_started {
         eprintln!(
             "[glrmask/profile][minimize_acyclic] states={} transitions={} classes={} topo_ms={:.3} classify_ms={:.3} build_ms={:.3} total_ms={:.3}",
             dfa.states.len(),
-            dfa.states.iter().map(|state| state.transitions.len()).sum::<usize>(),
+            dfa.states
+                .iter()
+                .map(|state| state.transitions.len())
+                .sum::<usize>(),
             class_representatives.len().saturating_sub(1),
             topo_ms,
             classify_ms,

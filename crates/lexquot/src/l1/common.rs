@@ -1,10 +1,9 @@
 use std::time::Instant;
 
-
+use super::L1Profile;
 use super::{BuildInput, L1Relation};
 use crate::automata::lexer::Lexer;
 use crate::equiv_types::{InternalIdMap, ManyToOneIdMap};
-use super::L1Profile;
 
 pub(super) struct Finished {
     pub artifact: L1Relation,
@@ -26,7 +25,10 @@ pub(super) fn direct_vocab_id_map(
     let mut representative_original_ids = vec![u32::MAX; token_classes as usize];
 
     if let Some(preordered) = preordered_originals {
-        debug_assert_eq!(preordered.len(), aliases.iter().map(Vec::len).sum::<usize>());
+        debug_assert_eq!(
+            preordered.len(),
+            aliases.iter().map(Vec::len).sum::<usize>()
+        );
         for &(original, unique) in preordered {
             let class = token_class[unique as usize] as usize;
             debug_assert!(class < internal_to_originals.len());
@@ -77,7 +79,10 @@ pub(super) fn grouped_vocab_id_map(
     let mut representative_original_ids = vec![u32::MAX; token_classes as usize];
 
     if let Some(preordered) = preordered_originals {
-        debug_assert_eq!(preordered.len(), aliases.iter().map(Vec::len).sum::<usize>());
+        debug_assert_eq!(
+            preordered.len(),
+            aliases.iter().map(Vec::len).sum::<usize>()
+        );
         for &(original, unique) in preordered {
             let class = token_class[unique as usize] as usize;
             debug_assert!(class < internal_to_originals.len());
@@ -207,7 +212,12 @@ pub(super) fn finish(
     let (token_class, token_reps) = compact_columns(&rows, aliases.len(), signatures.len());
     let compact_rows = rows
         .iter()
-        .map(|row| token_reps.iter().map(|&token| row[token]).collect::<Vec<_>>())
+        .map(|row| {
+            token_reps
+                .iter()
+                .map(|&token| row[token])
+                .collect::<Vec<_>>()
+        })
         .collect::<Vec<_>>();
     let compact_ms = compact_started.elapsed().as_secs_f64() * 1000.0;
     finish_compacted(
@@ -242,9 +252,18 @@ pub(super) fn finish_compacted(
         return None;
     }
     let initial = input.tokenizer.initial_state_id() as usize;
-    if state_class.get(initial).copied().is_some_and(|class| class != u32::MAX) {
+    if state_class
+        .get(initial)
+        .copied()
+        .is_some_and(|class| class != u32::MAX)
+    {
         let initial_class = state_class[initial];
-        if state_class.iter().filter(|&&class| class == initial_class).count() > 1 {
+        if state_class
+            .iter()
+            .filter(|&&class| class == initial_class)
+            .count()
+            > 1
+        {
             rows.push(rows[initial_class as usize].clone());
             state_class[initial] = (rows.len() - 1) as u32;
         }
@@ -261,14 +280,13 @@ pub(super) fn finish_compacted(
         rows.len() as u32,
         state_reps,
     );
-    let token_classes = token_class.iter().copied().max().map_or(0, |class| class + 1);
+    let token_classes = token_class
+        .iter()
+        .copied()
+        .max()
+        .map_or(0, |class| class + 1);
     let vocab_tokens = if input.id_map_only {
-        grouped_vocab_id_map(
-            aliases,
-            &token_class,
-            token_classes,
-            preordered_originals,
-        )
+        grouped_vocab_id_map(aliases, &token_class, token_classes, preordered_originals)
     } else if direct_vocab_map_enabled(&input) {
         direct_vocab_id_map(
             input.vocab.max_token_id(),
@@ -278,8 +296,7 @@ pub(super) fn finish_compacted(
             preordered_originals,
         )
     } else {
-        let mut original_to_internal =
-            vec![u32::MAX; input.vocab.max_token_id() as usize + 1];
+        let mut original_to_internal = vec![u32::MAX; input.vocab.max_token_id() as usize + 1];
         for (unique, originals) in aliases.iter().enumerate() {
             for &original in originals {
                 original_to_internal[original as usize] = token_class[unique];
@@ -363,7 +380,6 @@ pub(super) fn finish_compacted(
     })
 }
 
-
 /// Finish an L1 artifact directly from its exact sparse terminal/token relation.
 ///
 /// Each state row lists `(terminal, token_class)` memberships in terminal-major
@@ -388,9 +404,18 @@ pub(super) fn finish_sparse_terminal_rows(
         return None;
     }
     let initial = input.tokenizer.initial_state_id() as usize;
-    if state_class.get(initial).copied().is_some_and(|class| class != u32::MAX) {
+    if state_class
+        .get(initial)
+        .copied()
+        .is_some_and(|class| class != u32::MAX)
+    {
         let initial_class = state_class[initial];
-        if state_class.iter().filter(|&&class| class == initial_class).count() > 1 {
+        if state_class
+            .iter()
+            .filter(|&&class| class == initial_class)
+            .count()
+            > 1
+        {
             sparse_rows.push(sparse_rows[initial_class as usize].clone());
             state_class[initial] = (sparse_rows.len() - 1) as u32;
         }
@@ -411,7 +436,11 @@ pub(super) fn finish_sparse_terminal_rows(
     let state_map_ms = state_map_started.elapsed().as_secs_f64() * 1000.0;
 
     let vocab_map_started = Instant::now();
-    let token_classes = token_class.iter().copied().max().map_or(0, |class| class + 1);
+    let token_classes = token_class
+        .iter()
+        .copied()
+        .max()
+        .map_or(0, |class| class + 1);
     let vocab_tokens = if direct_vocab_map_enabled(&input) {
         direct_vocab_id_map(
             input.vocab.max_token_id(),
@@ -421,8 +450,7 @@ pub(super) fn finish_sparse_terminal_rows(
             preordered_originals,
         )
     } else {
-        let mut original_to_internal =
-            vec![u32::MAX; input.vocab.max_token_id() as usize + 1];
+        let mut original_to_internal = vec![u32::MAX; input.vocab.max_token_id() as usize + 1];
         for (unique, originals) in aliases.iter().enumerate() {
             for &original in originals {
                 original_to_internal[original as usize] = token_class[unique];
@@ -536,10 +564,15 @@ mod direct_vocab_map_tests {
         preordered.sort_unstable_by_key(|&(original, _)| original);
 
         let reference = direct_vocab_id_map(9, &aliases, &token_class, 3, None);
-        let preordered_map =
-            direct_vocab_id_map(9, &aliases, &token_class, 3, Some(&preordered));
-        assert_eq!(reference.original_to_internal, preordered_map.original_to_internal);
-        assert_eq!(reference.internal_to_originals, preordered_map.internal_to_originals);
+        let preordered_map = direct_vocab_id_map(9, &aliases, &token_class, 3, Some(&preordered));
+        assert_eq!(
+            reference.original_to_internal,
+            preordered_map.original_to_internal
+        );
+        assert_eq!(
+            reference.internal_to_originals,
+            preordered_map.internal_to_originals
+        );
         assert_eq!(
             reference.representative_original_ids,
             preordered_map.representative_original_ids

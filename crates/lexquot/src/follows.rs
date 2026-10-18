@@ -1,5 +1,5 @@
-use std::collections::BTreeMap;
 use crate::ds::bitset::BitSet;
+use std::collections::BTreeMap;
 type TerminalID = u32;
 
 pub fn ignore_transparent_disallowed_follows(

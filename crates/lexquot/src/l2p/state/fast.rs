@@ -68,7 +68,9 @@ struct StateBatchScratchLease<'a> {
 
 impl StateBatchScratchLease<'_> {
     fn scratch_mut(&mut self) -> &mut StateBatchScratch {
-        self.scratch.as_mut().expect("state scratch lease must be populated")
+        self.scratch
+            .as_mut()
+            .expect("state scratch lease must be populated")
     }
 }
 
@@ -514,7 +516,8 @@ fn hash_trellis_node_from_positions(
             let child_hash = if target_pos >= token_len {
                 ACCEPT_SINK_HASH
             } else {
-                let suffix_hashes = suffix_hashes.expect("child suffix hashes required for live edge");
+                let suffix_hashes =
+                    suffix_hashes.expect("child suffix hashes required for live edge");
                 let child_context = follow_contexts.context_for_gid(gid);
                 suffix_hashes.get(child_context, target_pos)
             };
@@ -999,9 +1002,7 @@ fn find_state_equivalence_classes_ex_inner<S: AsRef<[u8]> + Sync>(
 /// domains: after a terminal edge, a full-lexer state must resume from the full
 /// lexer start while a synthesized-lexer state must resume from the synthesized
 /// lexer start.
-pub fn find_state_equivalence_classes_with_state_resets<
-    S: AsRef<[u8]> + Sync,
->(
+pub fn find_state_equivalence_classes_with_state_resets<S: AsRef<[u8]> + Sync>(
     tokenizer: &TokenizerView,
     tokens: &[S],
     states: &[usize],
@@ -1060,7 +1061,7 @@ fn find_state_equivalence_classes_token_based<S: AsRef<[u8]> + Sync>(
     seed_initial_finalizers: bool,
     reset_states: Option<&[usize]>,
 ) -> Vec<usize> {
-    use std::collections::{hash_map::Entry, HashMap};
+    use std::collections::{HashMap, hash_map::Entry};
 
     let dfa = tokenizer.dfa();
 
@@ -1087,28 +1088,33 @@ fn find_state_equivalence_classes_token_based<S: AsRef<[u8]> + Sync>(
     let num_bc = compatible_shared_base
         .map(|base| base.num_classes)
         .or_else(|| {
-            computed_byte_class
-                .as_ref()
-                .map(|classes| classes.iter().copied().max().map_or(0usize, |max| max as usize + 1))
+            computed_byte_class.as_ref().map(|classes| {
+                classes
+                    .iter()
+                    .copied()
+                    .max()
+                    .map_or(0usize, |max| max as usize + 1)
+            })
         })
         .unwrap_or(256);
-    let compact_transitions: std::borrow::Cow<'_, [u32]> = if let Some(base) = compatible_shared_base {
-        std::borrow::Cow::Borrowed(base.transitions_by_state_class())
-    } else if let Some(classes) = computed_byte_class.as_ref() {
-        let mut transitions = vec![NONE_STATE; num_dfa_states * num_bc];
-        let raw = &dfa.transitions;
-        for state in 0..num_dfa_states {
-            let raw_base = state * 256;
-            let compact_base = state * num_bc;
-            for byte in 0..256u16 {
-                let class = classes[byte as usize] as usize;
-                transitions[compact_base + class] = raw[raw_base + byte as usize];
+    let compact_transitions: std::borrow::Cow<'_, [u32]> =
+        if let Some(base) = compatible_shared_base {
+            std::borrow::Cow::Borrowed(base.transitions_by_state_class())
+        } else if let Some(classes) = computed_byte_class.as_ref() {
+            let mut transitions = vec![NONE_STATE; num_dfa_states * num_bc];
+            let raw = &dfa.transitions;
+            for state in 0..num_dfa_states {
+                let raw_base = state * 256;
+                let compact_base = state * num_bc;
+                for byte in 0..256u16 {
+                    let class = classes[byte as usize] as usize;
+                    transitions[compact_base + class] = raw[raw_base + byte as usize];
+                }
             }
-        }
-        std::borrow::Cow::Owned(transitions)
-    } else {
-        std::borrow::Cow::Borrowed(&dfa.transitions)
-    };
+            std::borrow::Cow::Owned(transitions)
+        } else {
+            std::borrow::Cow::Borrowed(&dfa.transitions)
+        };
 
     let dfa_finalizers: Vec<&[usize]> = dfa
         .states
@@ -1216,12 +1222,7 @@ fn find_state_equivalence_classes_token_based<S: AsRef<[u8]> + Sync>(
                 .par_iter()
                 .enumerate()
                 .map_init(
-                    || {
-                        (
-                            vec![-1i32; num_groups],
-                            vec![0u64; bit_words(num_groups)],
-                        )
-                    },
+                    || (vec![-1i32; num_groups], vec![0u64; bit_words(num_groups)]),
                     |(positions, active_bits), (token_idx, token)| {
                         if !needed_token_flags[token_idx] {
                             None
@@ -1369,8 +1370,7 @@ fn find_state_equivalence_classes_token_based<S: AsRef<[u8]> + Sync>(
                     let state_ct_base = (state as usize) * num_bc;
                     let has_seed_initial_finalizers = seed_initial_finalizers
                         && dfa_finalizers[state as usize].iter().any(|&gid| {
-                            gid < num_groups
-                                && (skip_groups.is_empty() || !skip_groups[gid])
+                            gid < num_groups && (skip_groups.is_empty() || !skip_groups[gid])
                         });
 
                     let mut live_ranges: Vec<(usize, usize)> = Vec::new();
@@ -1389,8 +1389,8 @@ fn find_state_equivalence_classes_token_based<S: AsRef<[u8]> + Sync>(
                             == NONE_STATE
                             && !has_seed_initial_finalizers
                         {
-                            let weight_sum =
-                                batch_weight_prefix[range_end].wrapping_sub(batch_weight_prefix[range_start]);
+                            let weight_sum = batch_weight_prefix[range_end]
+                                .wrapping_sub(batch_weight_prefix[range_start]);
                             hash_delta = hash_delta
                                 .wrapping_add(fully_dead_token_hash.wrapping_mul(weight_sum));
                         } else {
@@ -1466,7 +1466,8 @@ fn find_state_equivalence_classes_token_based<S: AsRef<[u8]> + Sync>(
                                         dead_at_depth = Some(prefix_len + offset);
                                         break;
                                     }
-                                    let next = compact_transitions[current as usize * num_bc + byte_to_class[byte as usize] as usize];
+                                    let next = compact_transitions[current as usize * num_bc
+                                        + byte_to_class[byte as usize] as usize];
                                     if next == NONE_STATE {
                                         dead_at_depth = Some(prefix_len + offset + 1);
                                         walk_frames.push(WalkFrame {
@@ -1695,25 +1696,16 @@ pub fn mapping_to_equivalence_classes(
     rep_to_class.into_values().collect()
 }
 
-
 #[cfg(test)]
 mod state_batch_scratch_pool_tests {
-    use super::*;
     use super::super::super::compat::{FlatDfa, FlatDfaState, TokenizerView};
+    use super::*;
     use std::sync::Arc;
 
     #[test]
     fn discovery_sample_chooses_longest_token_per_lexical_stratum() {
         let tokens: Vec<&[u8]> = vec![
-            b"a",
-            b"aa",
-            b"aaaa",
-            b"b",
-            b"bbbbbb",
-            b"bb",
-            b"c",
-            b"cccc",
-            b"cc",
+            b"a", b"aa", b"aaaa", b"b", b"bbbbbb", b"bb", b"c", b"cccc", b"cc",
         ];
 
         assert_eq!(build_discovery_sample(&tokens, 3), vec![2, 4, 7]);
@@ -1818,7 +1810,10 @@ mod state_batch_scratch_pool_tests {
                 );
 
                 assert_eq!(fused.len, reference.len, "token={token:?}");
-                assert_eq!(fused.num_contexts, reference.num_contexts, "token={token:?}");
+                assert_eq!(
+                    fused.num_contexts, reference.num_contexts,
+                    "token={token:?}"
+                );
                 assert_eq!(fused.hashes, reference.hashes, "token={token:?}");
             }
         }

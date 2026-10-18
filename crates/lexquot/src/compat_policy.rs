@@ -2,18 +2,39 @@
 use std::cell::Cell;
 thread_local! { pub static VOCAB_INPLACE_DISALLOWED_INTERSECTION_SUPPRESS_DEPTH: Cell<u32> = const { Cell::new(0) }; }
 pub fn vocab_inplace_disallowed_intersection_enabled() -> bool {
- VOCAB_INPLACE_DISALLOWED_INTERSECTION_SUPPRESS_DEPTH.with(|d| d.get()==0) && std::env::var("LEXQUOT_VOCAB_INPLACE_DISALLOWED_INTERSECTION")
- .map(|v| !matches!(v.trim().to_ascii_lowercase().as_str(), "" | "0" | "false" | "no" | "off")).unwrap_or(true)
+    VOCAB_INPLACE_DISALLOWED_INTERSECTION_SUPPRESS_DEPTH.with(|d| d.get() == 0)
+        && std::env::var("LEXQUOT_VOCAB_INPLACE_DISALLOWED_INTERSECTION")
+            .map(|v| {
+                !matches!(
+                    v.trim().to_ascii_lowercase().as_str(),
+                    "" | "0" | "false" | "no" | "off"
+                )
+            })
+            .unwrap_or(true)
 }
 thread_local! { pub static VOCAB_REUSE_DENSE_DISALLOWED_SLOTS_SUPPRESS_DEPTH: Cell<u32> = const { Cell::new(0) }; }
 pub fn vocab_reuse_dense_disallowed_slots_enabled() -> bool {
- VOCAB_REUSE_DENSE_DISALLOWED_SLOTS_SUPPRESS_DEPTH.with(|d| d.get()==0) && std::env::var("LEXQUOT_VOCAB_REUSE_DENSE_DISALLOWED_SLOTS")
- .map(|v| !matches!(v.trim().to_ascii_lowercase().as_str(), "" | "0" | "false" | "no" | "off")).unwrap_or(true)
+    VOCAB_REUSE_DENSE_DISALLOWED_SLOTS_SUPPRESS_DEPTH.with(|d| d.get() == 0)
+        && std::env::var("LEXQUOT_VOCAB_REUSE_DENSE_DISALLOWED_SLOTS")
+            .map(|v| {
+                !matches!(
+                    v.trim().to_ascii_lowercase().as_str(),
+                    "" | "0" | "false" | "no" | "off"
+                )
+            })
+            .unwrap_or(true)
 }
 thread_local! { pub static VOCAB_REUSE_SINGLE_TARGET_DISALLOWED_SUPPRESS_DEPTH: Cell<u32> = const { Cell::new(0) }; }
 pub fn vocab_reuse_single_target_disallowed_enabled() -> bool {
- VOCAB_REUSE_SINGLE_TARGET_DISALLOWED_SUPPRESS_DEPTH.with(|d| d.get()==0) && std::env::var("LEXQUOT_VOCAB_REUSE_SINGLE_TARGET_DISALLOWED")
- .map(|v| !matches!(v.trim().to_ascii_lowercase().as_str(), "" | "0" | "false" | "no" | "off")).unwrap_or(true)
+    VOCAB_REUSE_SINGLE_TARGET_DISALLOWED_SUPPRESS_DEPTH.with(|d| d.get() == 0)
+        && std::env::var("LEXQUOT_VOCAB_REUSE_SINGLE_TARGET_DISALLOWED")
+            .map(|v| {
+                !matches!(
+                    v.trim().to_ascii_lowercase().as_str(),
+                    "" | "0" | "false" | "no" | "off"
+                )
+            })
+            .unwrap_or(true)
 }
 
 thread_local! { pub static FIRST_BYTE_VOCAB_FACTOR_SUPPRESS_DEPTH: Cell<u32> = const { Cell::new(0) }; }
@@ -49,9 +70,7 @@ pub fn l2p_partition_selector_enabled(name: &str, partition_label: &str) -> bool
         .unwrap_or(false)
 }
 
-pub fn l2p_first_byte_vocab_factor_enabled_for_partition(
-    partition_label: &str,
-) -> bool {
+pub fn l2p_first_byte_vocab_factor_enabled_for_partition(partition_label: &str) -> bool {
     if FIRST_BYTE_VOCAB_FACTOR_SUPPRESS_DEPTH.with(|depth| depth.get() != 0) {
         return false;
     }

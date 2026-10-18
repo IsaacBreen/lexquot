@@ -203,7 +203,12 @@ impl VocabPrefixTree {
     }
 
     pub fn build(tokens: &[(usize, Vec<u8>)]) -> Self {
-        Self::build_owned(tokens.iter().map(|(id, bytes)| (*id, bytes.clone())).collect())
+        Self::build_owned(
+            tokens
+                .iter()
+                .map(|(id, bytes)| (*id, bytes.clone()))
+                .collect(),
+        )
     }
 
     fn sort_and_dedup_tokens(tokens: &mut Vec<(usize, Vec<u8>)>) {
@@ -236,14 +241,20 @@ impl VocabPrefixTree {
             while index < entries.len() && entries[index].1[parent_prefix_len] == next_byte {
                 index += 1;
             }
-            children.push(Self::build_subtree(&entries[group_start..index], parent_prefix_len));
+            children.push(Self::build_subtree(
+                &entries[group_start..index],
+                parent_prefix_len,
+            ));
         }
         children
     }
 
     pub fn build_owned(mut tokens: Vec<(usize, Vec<u8>)>) -> Self {
         Self::sort_and_dedup_tokens(&mut tokens);
-        let refs: Vec<(usize, &[u8])> = tokens.iter().map(|(id, bytes)| (*id, bytes.as_slice())).collect();
+        let refs: Vec<(usize, &[u8])> = tokens
+            .iter()
+            .map(|(id, bytes)| (*id, bytes.as_slice()))
+            .collect();
         Self::build_presorted(&refs)
     }
 
@@ -320,7 +331,12 @@ impl VocabPrefixTree {
 
         let mut subtree_bytes = [0u64; 4];
         for child in &children {
-            merge_child_metadata(&mut reachable_token_ids, &mut subtree_bytes, prefix_len, child);
+            merge_child_metadata(
+                &mut reachable_token_ids,
+                &mut subtree_bytes,
+                prefix_len,
+                child,
+            );
         }
 
         VocabPrefixTreeNode {
@@ -341,11 +357,18 @@ impl VocabPrefixTree {
     /// nodes and emitted IDs; exhaustion returns None, NEVER a partial result.
     /// This permits callers to retain a direct-scan fallback for dense queries.
     pub fn token_ids_with_proper_prefix_byte(
-        &self, bytes: &[u64; 4], mut work_limit: usize,
+        &self,
+        bytes: &[u64; 4],
+        mut work_limit: usize,
     ) -> Option<Vec<usize>> {
-        if bytes.iter().all(|&word| word == 0) { return Some(Vec::new()); }
+        if bytes.iter().all(|&word| word == 0) {
+            return Some(Vec::new());
+        }
         let intersects = |observed: &[u64; 4]| {
-            observed.iter().zip(bytes).any(|(&left, &right)| left & right != 0)
+            observed
+                .iter()
+                .zip(bytes)
+                .any(|(&left, &right)| left & right != 0)
         };
         let contains = |byte: u8| bytes[byte as usize >> 6] & (1u64 << (byte & 63)) != 0;
         // Plan disjoint matching subtrees using their cached cardinalities
@@ -358,14 +381,17 @@ impl VocabPrefixTree {
             work_limit = work_limit.checked_sub(1)?;
             // No earlier edge had a matching byte, otherwise that complete
             // subtree was emitted already. Prefix bytes are not double-scanned.
-            if !intersects(node.subtree_bytes()) { continue; }
+            if !intersects(node.subtree_bytes()) {
+                continue;
+            }
             for (edge, child) in node.iter_children() {
                 work_limit = work_limit.checked_sub(1)?;
                 if let Some(offset) = edge.iter().position(|&byte| contains(byte)) {
                     let exclude_endpoint = offset + 1 == edge.len() && child.has_token();
                     // An edge-end witness is a proper prefix for STRICT
                     // descendants, but not the token ending at that node.
-                    let count = usize::try_from(child.reachable_token_ids().len()).ok()?
+                    let count = usize::try_from(child.reachable_token_ids().len())
+                        .ok()?
                         .checked_sub(usize::from(exclude_endpoint))?;
                     work_limit = work_limit.checked_sub(count)?;
                     token_count = token_count.checked_add(count)?;
@@ -379,8 +405,12 @@ impl VocabPrefixTree {
         }
         let mut ids = Vec::with_capacity(token_count);
         for (child, exclude_endpoint) in subtrees {
-            ids.extend(child.reachable_token_ids().iter().filter(|&id|
-                !exclude_endpoint || id != child.token_id()));
+            ids.extend(
+                child
+                    .reachable_token_ids()
+                    .iter()
+                    .filter(|&id| !exclude_endpoint || id != child.token_id()),
+            );
         }
         debug_assert_eq!(ids.len(), token_count);
         Some(ids)
@@ -462,97 +492,195 @@ mod proper_prefix_byte_tests {
     use super::*;
     use std::collections::BTreeSet;
 
-    fn mask(bytes: impl IntoIterator<Item=u8>) -> [u64; 4] {
-        let mut mask = [0;4];
-        for byte in bytes { mask[byte as usize >> 6] |= 1u64 << (byte & 63); }
+    fn mask(bytes: impl IntoIterator<Item = u8>) -> [u64; 4] {
+        let mut mask = [0; 4];
+        for byte in bytes {
+            mask[byte as usize >> 6] |= 1u64 << (byte & 63);
+        }
         mask
     }
 
-    fn reference(entries: &[(usize,Vec<u8>)], query: &[u64;4]) -> Vec<usize> {
-        let mut ids = entries.iter().filter_map(|(id, bytes)| {
-            bytes.get(..bytes.len().saturating_sub(1)).unwrap().iter()
-                .any(|&byte| query[byte as usize >> 6] & (1u64 << (byte & 63)) != 0)
-                .then_some(*id)
-        }).collect::<Vec<_>>();
-        ids.sort_unstable(); ids
+    fn reference(entries: &[(usize, Vec<u8>)], query: &[u64; 4]) -> Vec<usize> {
+        let mut ids = entries
+            .iter()
+            .filter_map(|(id, bytes)| {
+                bytes
+                    .get(..bytes.len().saturating_sub(1))
+                    .unwrap()
+                    .iter()
+                    .any(|&byte| query[byte as usize >> 6] & (1u64 << (byte & 63)) != 0)
+                    .then_some(*id)
+            })
+            .collect::<Vec<_>>();
+        ids.sort_unstable();
+        ids
     }
 
     #[test]
     fn proper_prefix_byte_query_respects_endpoints_compressed_edges_and_budget() {
-        let entries = [b"".as_slice(),b"b",b"ab",b"abc",b"abcd",b"abef",b"bc",
-            b"zzzzzzzzzzb",b"zzzzzzzzzzbx",b"\xff",b"\xff\x00",b"x\xff",b"x\xffy"]
-            .into_iter().enumerate().map(|(i,b)| (i*19+7,b.to_vec())).collect::<Vec<_>>();
+        let entries = [
+            b"".as_slice(),
+            b"b",
+            b"ab",
+            b"abc",
+            b"abcd",
+            b"abef",
+            b"bc",
+            b"zzzzzzzzzzb",
+            b"zzzzzzzzzzbx",
+            b"\xff",
+            b"\xff\x00",
+            b"x\xff",
+            b"x\xffy",
+        ]
+        .into_iter()
+        .enumerate()
+        .map(|(i, b)| (i * 19 + 7, b.to_vec()))
+        .collect::<Vec<_>>();
         let tree = VocabPrefixTree::build_owned(entries.clone());
-        for query in [mask([b'a']),mask([b'b']),mask([b'c']),mask([255]),mask([0]),mask([255,b'b']),[u64::MAX;4],[0;4]] {
-            let expected=reference(&entries,&query);
-            let mut actual=tree.token_ids_with_proper_prefix_byte(&query,usize::MAX).unwrap();
-            actual.sort_unstable(); assert_eq!(actual,expected);
+        for query in [
+            mask([b'a']),
+            mask([b'b']),
+            mask([b'c']),
+            mask([255]),
+            mask([0]),
+            mask([255, b'b']),
+            [u64::MAX; 4],
+            [0; 4],
+        ] {
+            let expected = reference(&entries, &query);
+            let mut actual = tree
+                .token_ids_with_proper_prefix_byte(&query, usize::MAX)
+                .unwrap();
+            actual.sort_unstable();
+            assert_eq!(actual, expected);
             for budget in 0..=64 {
-                if let Some(mut actual)=tree.token_ids_with_proper_prefix_byte(&query,budget) {
-                    actual.sort_unstable(); assert_eq!(actual,expected,"budget must never truncate the answer");
+                if let Some(mut actual) = tree.token_ids_with_proper_prefix_byte(&query, budget) {
+                    actual.sort_unstable();
+                    assert_eq!(actual, expected, "budget must never truncate the answer");
                 }
             }
         }
-        assert!(tree.token_ids_with_proper_prefix_byte(&mask([b'b']),0).is_none());
-        assert_eq!(tree.token_ids_with_proper_prefix_byte(&[0;4],0),Some(Vec::new()));
+        assert!(
+            tree.token_ids_with_proper_prefix_byte(&mask([b'b']), 0)
+                .is_none()
+        );
+        assert_eq!(
+            tree.token_ids_with_proper_prefix_byte(&[0; 4], 0),
+            Some(Vec::new())
+        );
     }
 
     #[test]
     fn proper_prefix_byte_cardinality_budget_excludes_only_the_matching_endpoint() {
-        let entries = vec![(7,b"a".to_vec()),(19,b"aa".to_vec()),(41,b"ab".to_vec())];
+        let entries = vec![
+            (7, b"a".to_vec()),
+            (19, b"aa".to_vec()),
+            (41, b"ab".to_vec()),
+        ];
         let tree = VocabPrefixTree::build_owned(entries.clone());
         // One root visit, one matching compressed edge and two strict
         // descendants. The endpoint "a" is not an extra emitted ID.
-        assert_eq!(tree.token_ids_with_proper_prefix_byte(&mask([b'a']),3),None);
-        let mut ids = tree.token_ids_with_proper_prefix_byte(&mask([b'a']),4).unwrap();
-        ids.sort_unstable(); assert_eq!(ids,vec![19,41]);
-        let leaf = VocabPrefixTree::build_owned(vec![(99,b"za".to_vec())]);
-        assert_eq!(leaf.token_ids_with_proper_prefix_byte(&mask([b'a']),2),Some(Vec::new()));
-        assert_eq!(leaf.token_ids_with_proper_prefix_byte(&mask([b'z']),2),None);
-        assert_eq!(leaf.token_ids_with_proper_prefix_byte(&mask([b'z']),3),Some(vec![99]));
+        assert_eq!(
+            tree.token_ids_with_proper_prefix_byte(&mask([b'a']), 3),
+            None
+        );
+        let mut ids = tree
+            .token_ids_with_proper_prefix_byte(&mask([b'a']), 4)
+            .unwrap();
+        ids.sort_unstable();
+        assert_eq!(ids, vec![19, 41]);
+        let leaf = VocabPrefixTree::build_owned(vec![(99, b"za".to_vec())]);
+        assert_eq!(
+            leaf.token_ids_with_proper_prefix_byte(&mask([b'a']), 2),
+            Some(Vec::new())
+        );
+        assert_eq!(
+            leaf.token_ids_with_proper_prefix_byte(&mask([b'z']), 2),
+            None
+        );
+        assert_eq!(
+            leaf.token_ids_with_proper_prefix_byte(&mask([b'z']), 3),
+            Some(vec![99])
+        );
     }
 
     #[test]
     fn proper_prefix_byte_dense_query_declines_without_returning_a_partial_subtree() {
-        let entries = (0..8192usize).map(|id| {
-            let mut bytes=vec![b'a'+u8::from(id>=4096)];
-            bytes.extend_from_slice(&(id as u32).to_le_bytes());
-            (id*3+11,bytes)
-        }).collect::<Vec<_>>();
-        let tree=VocabPrefixTree::build_owned(entries.clone());
-        let query=mask([b'a',b'b']);
+        let entries = (0..8192usize)
+            .map(|id| {
+                let mut bytes = vec![b'a' + u8::from(id >= 4096)];
+                bytes.extend_from_slice(&(id as u32).to_le_bytes());
+                (id * 3 + 11, bytes)
+            })
+            .collect::<Vec<_>>();
+        let tree = VocabPrefixTree::build_owned(entries.clone());
+        let query = mask([b'a', b'b']);
         // Either first subtree fits alone, but their union does not. The
         // complete plan must succeed before any partial answer is returned.
-        assert!(tree.token_ids_with_proper_prefix_byte(&query,5000).is_none());
-        let mut ids=tree.token_ids_with_proper_prefix_byte(&query,8195).unwrap();
-        ids.sort_unstable(); assert_eq!(ids,reference(&entries,&query));
-        assert!(tree.token_ids_with_proper_prefix_byte(&query,8194).is_none());
+        assert!(
+            tree.token_ids_with_proper_prefix_byte(&query, 5000)
+                .is_none()
+        );
+        let mut ids = tree
+            .token_ids_with_proper_prefix_byte(&query, 8195)
+            .unwrap();
+        ids.sort_unstable();
+        assert_eq!(ids, reference(&entries, &query));
+        assert!(
+            tree.token_ids_with_proper_prefix_byte(&query, 8194)
+                .is_none()
+        );
     }
 
     #[test]
     fn proper_prefix_byte_query_matches_independent_all_byte_and_random_set_scans() {
-        fn next(state: &mut u64)->u64 {
-            *state ^= *state << 13; *state ^= *state >> 7; *state ^= *state << 17; *state
+        fn next(state: &mut u64) -> u64 {
+            *state ^= *state << 13;
+            *state ^= *state >> 7;
+            *state ^= *state << 17;
+            *state
         }
-        let mut random=0x109174_b0_0d_u64;
+        let mut random = 0x109174_b0_0d_u64;
         for _case in 0..96 {
-            let mut words=BTreeSet::new(); words.insert(Vec::new());
+            let mut words = BTreeSet::new();
+            words.insert(Vec::new());
             for _ in 0..64 {
-                let len=(next(&mut random)%13) as usize;
-                words.insert((0..len).map(|_| next(&mut random) as u8).collect::<Vec<_>>());
+                let len = (next(&mut random) % 13) as usize;
+                words.insert(
+                    (0..len)
+                        .map(|_| next(&mut random) as u8)
+                        .collect::<Vec<_>>(),
+                );
             }
-            let entries=words.into_iter().enumerate().map(|(i,b)|(i*31+11,b)).collect::<Vec<_>>();
-            let tree=VocabPrefixTree::build_owned(entries.clone());
+            let entries = words
+                .into_iter()
+                .enumerate()
+                .map(|(i, b)| (i * 31 + 11, b))
+                .collect::<Vec<_>>();
+            let tree = VocabPrefixTree::build_owned(entries.clone());
             for byte in 0..=255u8 {
-                let query=mask([byte]); let expected=reference(&entries,&query);
-                let mut actual=tree.token_ids_with_proper_prefix_byte(&query,usize::MAX).unwrap();
-                actual.sort_unstable(); assert_eq!(actual,expected);
+                let query = mask([byte]);
+                let expected = reference(&entries, &query);
+                let mut actual = tree
+                    .token_ids_with_proper_prefix_byte(&query, usize::MAX)
+                    .unwrap();
+                actual.sort_unstable();
+                assert_eq!(actual, expected);
             }
             for _ in 0..128 {
-                let query=[next(&mut random),next(&mut random),next(&mut random),next(&mut random)];
-                let expected=reference(&entries,&query);
-                let mut actual=tree.token_ids_with_proper_prefix_byte(&query,usize::MAX).unwrap();
-                actual.sort_unstable(); assert_eq!(actual,expected);
+                let query = [
+                    next(&mut random),
+                    next(&mut random),
+                    next(&mut random),
+                    next(&mut random),
+                ];
+                let expected = reference(&entries, &query);
+                let mut actual = tree
+                    .token_ids_with_proper_prefix_byte(&query, usize::MAX)
+                    .unwrap();
+                actual.sort_unstable();
+                assert_eq!(actual, expected);
             }
         }
     }

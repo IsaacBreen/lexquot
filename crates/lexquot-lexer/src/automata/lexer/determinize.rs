@@ -253,7 +253,11 @@ fn is_epsilon_free_deterministic(nfa: &NFA) -> bool {
     })
 }
 
-fn determinize_epsilon_free_deterministic(nfa: &NFA, group_count: usize, reachable_groups: &[BitSet]) -> DFA {
+fn determinize_epsilon_free_deterministic(
+    nfa: &NFA,
+    group_count: usize,
+    reachable_groups: &[BitSet],
+) -> DFA {
     let num_states = nfa.states.len().max(1);
     let mut order = Vec::with_capacity(num_states);
     order.push(nfa.start_state as usize);
@@ -289,7 +293,11 @@ fn determinize_epsilon_free_deterministic(nfa: &NFA, group_count: usize, reachab
             transitions.sort_unstable_by_key(|entry| entry.0);
         }
 
-        dfa.overwrite_state_metadata(new_state as u32, finalizers, reachable_groups[old_state].clone());
+        dfa.overwrite_state_metadata(
+            new_state as u32,
+            finalizers,
+            reachable_groups[old_state].clone(),
+        );
         dfa.set_transitions_from_sorted_entries(new_state as u32, transitions);
     }
 
@@ -306,11 +314,7 @@ struct RemappedTransitions {
 fn build_remapped_transitions(nfa: &NFA, class_map: &[u8]) -> RemappedTransitions {
     let mut remapped_set_cache: FxHashMap<U8Set, U8Set> = FxHashMap::default();
     let mut offsets = Vec::with_capacity(nfa.states.len() + 1);
-    let transition_count = nfa
-        .states
-        .iter()
-        .map(|state| state.transitions.len())
-        .sum();
+    let transition_count = nfa.states.iter().map(|state| state.transitions.len()).sum();
     let mut class_sets = Vec::with_capacity(transition_count);
     let mut targets = Vec::with_capacity(transition_count);
     let mut source_word_masks = vec![0u64; nfa.states.len().div_ceil(64)];
@@ -470,7 +474,9 @@ fn build_closed_state_targets(
         .map(|(state, closure)| {
             closure
                 .as_ref()
-                .map_or(usize::from(retained_states[state]), |closure| closure.words.len())
+                .map_or(usize::from(retained_states[state]), |closure| {
+                    closure.words.len()
+                })
         })
         .sum();
     let mut result = ClosedStateTargets {
@@ -484,7 +490,9 @@ fn build_closed_state_targets(
             result
                 .word_indices
                 .extend(closure.words.iter().map(|&(word_index, _)| word_index));
-            result.words.extend(closure.words.iter().map(|&(_, bits)| bits));
+            result
+                .words
+                .extend(closure.words.iter().map(|&(_, bits)| bits));
         } else if retained_states[state] {
             result.word_indices.push((state / 64) as u32);
             result.words.push(1u64 << (state % 64));
@@ -576,21 +584,21 @@ impl NFA {
         let total_started_at = profile.then(std::time::Instant::now);
         let determinize_started_at = profile.then(std::time::Instant::now);
         let (dfa, class_members) = self.determinize_impl(false);
-        let determinize_ms = determinize_started_at
-            .map_or(0.0, |started| started.elapsed().as_secs_f64() * 1000.0);
+        let determinize_ms =
+            determinize_started_at.map_or(0.0, |started| started.elapsed().as_secs_f64() * 1000.0);
         let pre_minimize_states = dfa.num_states();
         let pre_minimize_transitions = dfa.transition_count();
         let minimize_started_at = profile.then(std::time::Instant::now);
         let mut minimized = dfa.minimize();
-        let minimize_ms = minimize_started_at
-            .map_or(0.0, |started| started.elapsed().as_secs_f64() * 1000.0);
+        let minimize_ms =
+            minimize_started_at.map_or(0.0, |started| started.elapsed().as_secs_f64() * 1000.0);
         let class_transition_count = minimized.transition_count();
         let expand_started_at = profile.then(std::time::Instant::now);
         if let Some(class_members) = class_members {
             expand_byte_class_transitions(&mut minimized, &class_members);
         }
-        let expand_ms = expand_started_at
-            .map_or(0.0, |started| started.elapsed().as_secs_f64() * 1000.0);
+        let expand_ms =
+            expand_started_at.map_or(0.0, |started| started.elapsed().as_secs_f64() * 1000.0);
         if let Some(total_started_at) = total_started_at {
             eprintln!(
                 "[glrmask/profile][tokenizer] class_alphabet_minimize pre_states={} pre_class_transitions={} post_states={} post_class_transitions={} post_byte_transitions={} determinize_ms={:.3} minimize_ms={:.3} expand_ms={:.3} total_ms={:.3}",
@@ -621,8 +629,8 @@ impl NFA {
 
         let reachable_started_at = profile.then(std::time::Instant::now);
         let reachable_groups = compute_reachable_groups(self, group_count);
-        let reachable_ms = reachable_started_at
-            .map_or(0.0, |started| started.elapsed().as_secs_f64() * 1000.0);
+        let reachable_ms =
+            reachable_started_at.map_or(0.0, |started| started.elapsed().as_secs_f64() * 1000.0);
         let deterministic_no_epsilon = is_epsilon_free_deterministic(self);
 
         if deterministic_no_epsilon {
@@ -637,20 +645,22 @@ impl NFA {
 
         let classes_started_at = profile.then(std::time::Instant::now);
         let (class_map, num_classes, class_members) = self.compute_equivalence_classes();
-        let classes_ms = classes_started_at
-            .map_or(0.0, |started| started.elapsed().as_secs_f64() * 1000.0);
+        let classes_ms =
+            classes_started_at.map_or(0.0, |started| started.elapsed().as_secs_f64() * 1000.0);
         let remap_started_at = profile.then(std::time::Instant::now);
         let remapped_transitions = build_remapped_transitions(self, &class_map);
-        let remap_ms = remap_started_at
-            .map_or(0.0, |started| started.elapsed().as_secs_f64() * 1000.0);
+        let remap_ms =
+            remap_started_at.map_or(0.0, |started| started.elapsed().as_secs_f64() * 1000.0);
 
         let compact_started_at = profile.then(std::time::Instant::now);
         let compact_nfa = self.build_compact_nfa();
-        let compact_ms = compact_started_at
-            .map_or(0.0, |started| started.elapsed().as_secs_f64() * 1000.0);
+        let compact_ms =
+            compact_started_at.map_or(0.0, |started| started.elapsed().as_secs_f64() * 1000.0);
         let num_nfa_states = self.states.len();
         let out_degree: Vec<u32> = (0..num_nfa_states)
-            .map(|state| compact_nfa.epsilon_offsets[state + 1] - compact_nfa.epsilon_offsets[state])
+            .map(|state| {
+                compact_nfa.epsilon_offsets[state + 1] - compact_nfa.epsilon_offsets[state]
+            })
             .collect();
 
         let closure_precompute_started_at = profile.then(std::time::Instant::now);
@@ -667,11 +677,8 @@ impl NFA {
         }
         let high_degree_closures =
             precompute_epsilon_closures(&compact_nfa, &out_degree, &retained_word_masks);
-        let closed_state_targets = build_closed_state_targets(
-            num_nfa_states,
-            &retained_states,
-            &high_degree_closures,
-        );
+        let closed_state_targets =
+            build_closed_state_targets(num_nfa_states, &retained_states, &high_degree_closures);
         let closure_precompute_ms = closure_precompute_started_at
             .map_or(0.0, |started| started.elapsed().as_secs_f64() * 1000.0);
         let start_closure = build_start_closure(
@@ -700,15 +707,14 @@ impl NFA {
             }
             words
         });
-        let (start_finalizers, start_future) =
-            compute_subset_metadata(
-                self,
-                &start_key,
-                group_count,
-                &reachable_groups,
-                single_group_finalizer_words.as_deref(),
-                single_group_future_words.as_deref(),
-            );
+        let (start_finalizers, start_future) = compute_subset_metadata(
+            self,
+            &start_key,
+            group_count,
+            &reachable_groups,
+            single_group_finalizer_words.as_deref(),
+            single_group_future_words.as_deref(),
+        );
         dfa.overwrite_state_metadata(0, start_finalizers, start_future);
 
         let start_key = Arc::new(start_key);
@@ -863,8 +869,14 @@ impl NFA {
                 "[glrmask/profile][tokenizer] nfa_determinize_detail alphabet={} nfa_states={} nfa_transitions={} epsilon_edges={} groups={} classes={} dfa_states={} dfa_transitions={} avg_subset_members={:.2} max_subset_members={} avg_used_classes={:.2} avg_closed_target_members={:.2} max_closed_target_members={} avg_target_words={:.2} max_target_words={} reachable_ms={:.3} classes_ms={:.3} remap_ms={:.3} compact_ms={:.3} closure_precompute_ms={:.3} collect_closed_ms={:.3} compress_ms={:.3} lookup_ms={:.3} metadata_ms={:.3} transition_ms={:.3} loop_ms={:.3} total_ms={:.3}",
                 if expand_byte_classes { "byte" } else { "class" },
                 self.states.len(),
-                self.states.iter().map(|state| state.transitions.len()).sum::<usize>(),
-                self.states.iter().map(|state| state.epsilon_transitions.len()).sum::<usize>(),
+                self.states
+                    .iter()
+                    .map(|state| state.transitions.len())
+                    .sum::<usize>(),
+                self.states
+                    .iter()
+                    .map(|state| state.epsilon_transitions.len())
+                    .sum::<usize>(),
                 group_count,
                 num_classes,
                 states,

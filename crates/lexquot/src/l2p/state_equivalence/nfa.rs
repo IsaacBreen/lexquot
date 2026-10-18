@@ -177,8 +177,7 @@ fn mark_relevant_powerset_trie_trajectories(
             for (slot, &(byte, _)) in trie[node_index].children.iter().enumerate() {
                 child_slot_by_byte[byte as usize] = slot as u16;
             }
-            let mut child_frontiers =
-                vec![Vec::<u32>::new(); trie[node_index].children.len()];
+            let mut child_frontiers = vec![Vec::<u32>::new(); trie[node_index].children.len()];
             for offset in 0..state_len {
                 let source = product_states[state_start + offset];
                 let edge_start = view.edge_offsets[source as usize] as usize;
@@ -225,8 +224,8 @@ fn mark_relevant_powerset_trie_trajectories(
             }
             for offset in 0..state_len {
                 let source = product_states[state_start + offset];
-                let target = dense_transitions
-                    [source as usize * transition_stride + byte_slot as usize];
+                let target =
+                    dense_transitions[source as usize * transition_stride + byte_slot as usize];
                 if target == u32::MAX {
                     continue;
                 }
@@ -259,8 +258,7 @@ pub fn build_bounded_analysis_view_from_relevant_powerset(
     for (slot, &byte) in view.bytes.iter().enumerate() {
         byte_to_slot[byte as usize] = slot as u16;
     }
-    let mut dense_transitions =
-        vec![u32::MAX; view.states.len().saturating_mul(transition_stride)];
+    let mut dense_transitions = vec![u32::MAX; view.states.len().saturating_mul(transition_stride)];
     for state in 0..view.states.len() {
         let edge_start = view.edge_offsets[state] as usize;
         let edge_end = view.edge_offsets[state + 1] as usize;
@@ -358,12 +356,7 @@ pub fn build_relevant_powerset_analysis_view(
     relevant_bytes: &[bool; 256],
     active_groups: &[bool],
 ) -> BoundedAnalysisView {
-    let view = build_relevant_powerset_view(
-        tokenizer,
-        relevant_bytes,
-        Some(active_groups),
-        None,
-    );
+    let view = build_relevant_powerset_view(tokenizer, relevant_bytes, Some(active_groups), None);
     let raw_start_to_view = view.raw_start_to_view.to_vec();
     BoundedAnalysisView {
         tokenizer_view: view.into_tokenizer_view(),
@@ -443,12 +436,7 @@ pub fn raw_active_language_states(
                 tokenizer
                     .matched_terminals_iter(state)
                     .chain(tokenizer.possible_future_terminals_iter(state))
-                    .any(|group| {
-                        active_groups
-                            .get(group as usize)
-                            .copied()
-                            .unwrap_or(false)
-                    })
+                    .any(|group| active_groups.get(group as usize).copied().unwrap_or(false))
             })
             .collect(),
     )
@@ -472,9 +460,7 @@ fn mapped_class_active_language(
             .internal_to_originals
             .iter()
             .map(|members| {
-                let active = members
-                    .iter()
-                    .any(|&raw| raw_active_language[raw as usize]);
+                let active = members.iter().any(|&raw| raw_active_language[raw as usize]);
                 debug_assert!(
                     members
                         .iter()
@@ -495,9 +481,7 @@ fn mapped_target_config(
     let mut target_config = targets
         .iter()
         .map(|&raw_state| state_map.original_to_internal[raw_state as usize])
-        .filter(|&class| {
-            class_active_language.is_none_or(|active| active[class as usize])
-        })
+        .filter(|&class| class_active_language.is_none_or(|active| active[class as usize]))
         .collect::<Vec<_>>();
     target_config.sort_unstable();
     target_config.dedup();
@@ -603,8 +587,7 @@ fn try_build_relevant_powerset_view(
             state_map.representative_original_ids.len(),
         );
         assert!(state_map.original_to_internal.iter().all(|&class| {
-            class != u32::MAX
-                && (class as usize) < state_map.representative_original_ids.len()
+            class != u32::MAX && (class as usize) < state_map.representative_original_ids.len()
         }));
     }
 
@@ -649,13 +632,7 @@ fn try_build_relevant_powerset_view(
                 .iter()
                 .map(|&class| class_to_view[class as usize])
                 .collect::<Vec<_>>();
-            (
-                config_ids,
-                configs,
-                raw_start_to_view,
-                worklist,
-                queued,
-            )
+            (config_ids, configs, raw_start_to_view, worklist, queued)
         } else {
             let mut config_ids = RelevantConfigInterner::default();
             let mut configs = Vec::<Box<[u32]>>::new();
@@ -679,13 +656,7 @@ fn try_build_relevant_powerset_view(
                     worklist.push_back(state);
                 }
             }
-            (
-                config_ids,
-                configs,
-                raw_start_to_view,
-                worklist,
-                queued,
-            )
+            (config_ids, configs, raw_start_to_view, worklist, queued)
         };
     check_budget(configs.len(), 0, budget)?;
 
@@ -869,16 +840,15 @@ fn try_build_relevant_powerset_view(
         let mut byte_marks = [0u32; 256];
         let mut byte_epoch = 0u32;
         let mut candidate_bytes = Vec::<u8>::new();
-        let mut target_marks = (direct_raw_target_views && !one_pass_raw_targets)
-            .then(|| vec![0u32; raw_state_count]);
+        let mut target_marks =
+            (direct_raw_target_views && !one_pass_raw_targets).then(|| vec![0u32; raw_state_count]);
         let mut target_epoch = 0u32;
         // In the one-pass lane, keep one reusable target bucket per byte. The
         // previous path first scanned every source row to discover candidate
         // bytes, then rescanned every source once per candidate byte via
         // `tokenizer.step`.
-        let mut direct_target_buckets = one_pass_raw_targets.then(|| {
-            (0..256).map(|_| Vec::<u32>::new()).collect::<Vec<_>>()
-        });
+        let mut direct_target_buckets =
+            one_pass_raw_targets.then(|| (0..256).map(|_| Vec::<u32>::new()).collect::<Vec<_>>());
         while let Some(state) = worklist.pop_front() {
             assert_eq!(
                 state as usize + 1,
@@ -1016,21 +986,19 @@ fn try_build_relevant_powerset_view(
             .expect("mapped powerset must retain representative closures");
         let class_states = closure_by_class
             .iter()
-            .map(|closure| {
-                FlatDfaState {
-                    finalizers: filtered_config_groups(
-                        tokenizer,
-                        closure.as_slice(),
-                        active_groups,
-                        true,
-                    ),
-                    possible_future_group_ids: filtered_config_groups(
-                        tokenizer,
-                        closure.as_slice(),
-                        active_groups,
-                        false,
-                    ),
-                }
+            .map(|closure| FlatDfaState {
+                finalizers: filtered_config_groups(
+                    tokenizer,
+                    closure.as_slice(),
+                    active_groups,
+                    true,
+                ),
+                possible_future_group_ids: filtered_config_groups(
+                    tokenizer,
+                    closure.as_slice(),
+                    active_groups,
+                    false,
+                ),
             })
             .collect::<Vec<_>>();
         configs
@@ -1154,7 +1122,8 @@ impl TokenBoundedAnalysisTrie {
         initial_events: Option<&[bool]>,
     ) -> Option<(Vec<bool>, usize)> {
         let states = events.len();
-        if flat_trans.len() != states.checked_mul(256)? || self.nodes.is_empty()
+        if flat_trans.len() != states.checked_mul(256)?
+            || self.nodes.is_empty()
             || initial_events.is_some_and(|events| events.len() != states)
         {
             return None;
@@ -1171,8 +1140,11 @@ impl TokenBoundedAnalysisTrie {
         let mut dag = Vec::<Vec<(u8, usize)>>::new();
         let mut intern = FxHashMap::<Vec<(u8, usize)>, usize>::default();
         for node in (0..self.nodes.len()).rev() {
-            let mut signature = self.nodes[node].children.iter()
-                .map(|&(byte, child)| (byte, classes[child])).collect::<Vec<_>>();
+            let mut signature = self.nodes[node]
+                .children
+                .iter()
+                .map(|&(byte, child)| (byte, classes[child]))
+                .collect::<Vec<_>>();
             signature.sort_unstable();
             classes[node] = if let Some(&id) = intern.get(&signature) {
                 id
@@ -1185,64 +1157,93 @@ impl TokenBoundedAnalysisTrie {
         }
         let edges = dag.iter().map(Vec::len).sum::<usize>()
             + initial_events.map_or(0, |_| dag[classes[0]].len());
-        let epsilon_volume = epsilon_closures.iter().map(|(_, closure)| closure.len()).sum::<usize>();
+        let epsilon_volume = epsilon_closures
+            .iter()
+            .map(|(_, closure)| closure.len())
+            .sum::<usize>();
         let words = states.div_ceil(64);
-        if states.checked_mul(edges)?.checked_add(epsilon_volume.checked_mul(dag.len())?)? > 120_000_000
+        if states
+            .checked_mul(edges)?
+            .checked_add(epsilon_volume.checked_mul(dag.len())?)?
+            > 120_000_000
             || words.checked_mul(dag.len())?.checked_mul(16)? > 64 * 1024 * 1024
         {
             return None;
         }
         let mut used_bytes = [false; 256];
-        for &(byte, _) in dag.iter().flatten() { used_bytes[byte as usize] = true; }
+        for &(byte, _) in dag.iter().flatten() {
+            used_bytes[byte as usize] = true;
+        }
         let byte_count = used_bytes.iter().filter(|&&used| used).count();
         if states.checked_mul(byte_count)?.checked_mul(4)? > 64 * 1024 * 1024 {
             return None;
         }
-        let used_bytes=used_bytes.iter().enumerate().filter_map(|(b,&yes)|yes.then_some(b)).collect::<Vec<_>>();
-        let mut columns=vec![Vec::<(u32,u32)>::new();256];
-        let mut stored_pairs=0usize;
+        let used_bytes = used_bytes
+            .iter()
+            .enumerate()
+            .filter_map(|(b, &yes)| yes.then_some(b))
+            .collect::<Vec<_>>();
+        let mut columns = vec![Vec::<(u32, u32)>::new(); 256];
+        let mut stored_pairs = 0usize;
         // Scan each contiguous raw transition row once, not one strided full
         // lexer pass for every byte. This changes storage order only; each
         // byte column remains sorted by original source-state identity.
-        for (source,row) in flat_trans.chunks_exact(256).enumerate(){
-            for &byte in &used_bytes{
-                let target=row[byte];
-                if target==u32::MAX{continue;}
-                if target as usize>=states{return None;}
-                stored_pairs=stored_pairs.checked_add(1)?;
-                if stored_pairs>8_000_000{return None;}
-                columns[byte].push((source as u32,target));
+        for (source, row) in flat_trans.chunks_exact(256).enumerate() {
+            for &byte in &used_bytes {
+                let target = row[byte];
+                if target == u32::MAX {
+                    continue;
+                }
+                if target as usize >= states {
+                    return None;
+                }
+                stored_pairs = stored_pairs.checked_add(1)?;
+                if stored_pairs > 8_000_000 {
+                    return None;
+                }
+                columns[byte].push((source as u32, target));
             }
         }
         let mut event_words = vec![0u64; words];
         for (state, &event) in events.iter().enumerate() {
-            if event { event_words[state / 64] |= 1u64 << (state % 64); }
+            if event {
+                event_words[state / 64] |= 1u64 << (state % 64);
+            }
         }
         let mut rows = Vec::<Vec<u64>>::with_capacity(dag.len());
-        let mut row_ids=Vec::<usize>::with_capacity(dag.len());
-        let mut interned_rows=FxHashMap::<Vec<u64>,usize>::default();
-        let mut preimages=FxHashMap::<(u8,usize),Vec<(usize,u64)>>::default();
-        let mut cache_words=0usize;
+        let mut row_ids = Vec::<usize>::with_capacity(dag.len());
+        let mut interned_rows = FxHashMap::<Vec<u64>, usize>::default();
+        let mut preimages = FxHashMap::<(u8, usize), Vec<(usize, u64)>>::default();
+        let mut cache_words = 0usize;
         for children in &dag {
             let mut live = event_words.clone();
             for &(byte, child) in children {
                 let target_live = &rows[child];
-                let key=(byte,row_ids[child]);
-                if let Some(cached)=preimages.get(&key){
-                    for &(word,bits) in cached{live[word]|=bits;}
-                }else{
-                    let mut observed=vec![0u64;words];
-                    for &(source,target)in &columns[byte as usize]{
-                        if target_live[target as usize/64]&(1u64<<(target%64))!=0{
-                            observed[source as usize/64]|=1u64<<(source%64);
+                let key = (byte, row_ids[child]);
+                if let Some(cached) = preimages.get(&key) {
+                    for &(word, bits) in cached {
+                        live[word] |= bits;
+                    }
+                } else {
+                    let mut observed = vec![0u64; words];
+                    for &(source, target) in &columns[byte as usize] {
+                        if target_live[target as usize / 64] & (1u64 << (target % 64)) != 0 {
+                            observed[source as usize / 64] |= 1u64 << (source % 64);
                         }
                     }
-                    let nonzero=observed.into_iter().enumerate().filter(|(_,bits)|*bits!=0).collect::<Vec<_>>();
-                    for &(word,bits)in &nonzero{live[word]|=bits;}
+                    let nonzero = observed
+                        .into_iter()
+                        .enumerate()
+                        .filter(|(_, bits)| *bits != 0)
+                        .collect::<Vec<_>>();
+                    for &(word, bits) in &nonzero {
+                        live[word] |= bits;
+                    }
                     // Stop caching rather than approximating if the auxiliary
                     // index reaches its memory budget. This is only memoization.
-                    if cache_words+nonzero.len()<=2_000_000 && preimages.len()<65_536{
-                        cache_words+=nonzero.len();preimages.insert(key,nonzero);
+                    if cache_words + nonzero.len() <= 2_000_000 && preimages.len() < 65_536 {
+                        cache_words += nonzero.len();
+                        preimages.insert(key, nonzero);
                     }
                 }
             }
@@ -1250,12 +1251,15 @@ impl TokenBoundedAnalysisTrie {
             // any newly observed member's closure is already contained in the
             // current source's transitive closure.
             for (source, closure) in epsilon_closures {
-                if closure.iter().any(|&q| live[q as usize / 64] & (1u64 << (q % 64)) != 0) {
+                if closure
+                    .iter()
+                    .any(|&q| live[q as usize / 64] & (1u64 << (q % 64)) != 0)
+                {
                     live[source / 64] |= 1u64 << (source % 64);
                 }
             }
-            let next_id=interned_rows.len();
-            let id=*interned_rows.entry(live.clone()).or_insert(next_id);
+            let next_id = interned_rows.len();
+            let id = *interned_rows.entry(live.clone()).or_insert(next_id);
             row_ids.push(id);
             rows.push(live);
         }
@@ -1267,24 +1271,37 @@ impl TokenBoundedAnalysisTrie {
         let root = if let Some(initial_events) = initial_events {
             let mut live = vec![0u64; words];
             for (q, &event) in initial_events.iter().enumerate() {
-                if event { live[q / 64] |= 1u64 << (q % 64); }
+                if event {
+                    live[q / 64] |= 1u64 << (q % 64);
+                }
             }
             for &(byte, child) in &dag[classes[0]] {
                 for &(source, target) in &columns[byte as usize] {
-                    let source=source as usize;
-                    if rows[child][target as usize / 64] & (1u64 << (target % 64)) != 0
-                    { live[source / 64] |= 1u64 << (source % 64); }
+                    let source = source as usize;
+                    if rows[child][target as usize / 64] & (1u64 << (target % 64)) != 0 {
+                        live[source / 64] |= 1u64 << (source % 64);
+                    }
                 }
             }
             for (source, closure) in epsilon_closures {
-                if closure.iter().any(|&q| live[q as usize / 64] & (1u64 << (q % 64)) != 0) {
+                if closure
+                    .iter()
+                    .any(|&q| live[q as usize / 64] & (1u64 << (q % 64)) != 0)
+                {
                     live[source / 64] |= 1u64 << (source % 64);
                 }
             }
             initial_row = live;
             &initial_row
-        } else { &rows[classes[0]] };
-        Some(((0..states).map(|q| root[q / 64] & (1u64 << (q % 64)) != 0).collect(), dag.len()))
+        } else {
+            &rows[classes[0]]
+        };
+        Some((
+            (0..states)
+                .map(|q| root[q / 64] & (1u64 << (q % 64)) != 0)
+                .collect(),
+            dag.len(),
+        ))
     }
 }
 
@@ -1307,9 +1324,13 @@ fn prefix_event_sources_match_independent_forward_execution() {
         for q in 0..n {
             for b in 0..3 {
                 let target = next() % (n + 2);
-                if target < n { flat[q * 256 + b] = target as u32; }
+                if target < n {
+                    flat[q * 256 + b] = target as u32;
+                }
             }
-            if next() % 3 == 0 { eps[q].push(next() % n); }
+            if next() % 3 == 0 {
+                eps[q].push(next() % n);
+            }
         }
         let mut closures = Vec::new();
         let mut full_closures = Vec::new();
@@ -1317,40 +1338,66 @@ fn prefix_event_sources_match_independent_forward_execution() {
             let mut seen = vec![false; n];
             let mut pending = vec![q];
             while let Some(s) = pending.pop() {
-                if seen[s] { continue; }
+                if seen[s] {
+                    continue;
+                }
                 seen[s] = true;
                 pending.extend(eps[s].iter().copied());
             }
-            let closure = (0..n).filter(|&s| seen[s]).map(|s| s as u32).collect::<Vec<_>>();
-            if closure.len() > 1 { closures.push((q, closure.clone().into_boxed_slice())); }
+            let closure = (0..n)
+                .filter(|&s| seen[s])
+                .map(|s| s as u32)
+                .collect::<Vec<_>>();
+            if closure.len() > 1 {
+                closures.push((q, closure.clone().into_boxed_slice()));
+            }
             full_closures.push(closure);
         }
         let events = (0..n).map(|_| next() % 4 == 0).collect::<Vec<_>>();
-        let mut tokens = (0..12).map(|_| {
-            let length = next() % 7;
-            (0..length).map(|_| (next() % 3) as u8).collect::<Vec<_>>()
-        }).collect::<Vec<_>>();
+        let mut tokens = (0..12)
+            .map(|_| {
+                let length = next() % 7;
+                (0..length).map(|_| (next() % 3) as u8).collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
         tokens.sort();
         let borrowed = tokens.iter().map(Vec::as_slice).collect::<Vec<_>>();
         let trie = build_token_bounded_analysis_trie_sorted(&borrowed);
         let initial_events = (0..n).map(|_| next() % 5 == 0).collect::<Vec<_>>();
         for initial in [None, Some(initial_events.as_slice())] {
-        let (actual, _) = trie.prefix_event_sources(&flat, &events, &closures, initial).unwrap();
-        let expected = (0..n).map(|source| tokens.iter().any(|token| {
-            let mut current = full_closures[source].clone();
-            if current.iter().any(|&q| initial.unwrap_or(&events)[q as usize]) { return true; }
-            for &byte in token {
-                let mut target = Vec::new();
-                for &q in &current {
-                    let q = flat[q as usize * 256 + byte as usize];
-                    if q != u32::MAX { target.extend(full_closures[q as usize].iter().copied()); }
-                }
-                target.sort_unstable(); target.dedup(); current = target;
-                if current.iter().any(|&q| events[q as usize]) { return true; }
-            }
-            false
-        })).collect::<Vec<_>>();
-        assert_eq!(actual, expected, "generated prefix event case {case}");
+            let (actual, _) = trie
+                .prefix_event_sources(&flat, &events, &closures, initial)
+                .unwrap();
+            let expected = (0..n)
+                .map(|source| {
+                    tokens.iter().any(|token| {
+                        let mut current = full_closures[source].clone();
+                        if current
+                            .iter()
+                            .any(|&q| initial.unwrap_or(&events)[q as usize])
+                        {
+                            return true;
+                        }
+                        for &byte in token {
+                            let mut target = Vec::new();
+                            for &q in &current {
+                                let q = flat[q as usize * 256 + byte as usize];
+                                if q != u32::MAX {
+                                    target.extend(full_closures[q as usize].iter().copied());
+                                }
+                            }
+                            target.sort_unstable();
+                            target.dedup();
+                            current = target;
+                            if current.iter().any(|&q| events[q as usize]) {
+                                return true;
+                            }
+                        }
+                        false
+                    })
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(actual, expected, "generated prefix event case {case}");
         }
     }
 }
@@ -1359,22 +1406,47 @@ fn prefix_event_sources_match_independent_forward_execution() {
 #[test]
 fn prefix_event_sources_declines_unknown_targets_and_bad_domains() {
     let trie = build_token_bounded_analysis_trie_sorted(&[b"ab"]);
-    assert!(trie.prefix_event_sources(&[], &[false], &[], None).is_none());
+    assert!(
+        trie.prefix_event_sources(&[], &[false], &[], None)
+            .is_none()
+    );
     let mut flat = vec![u32::MAX; 256];
     flat[b'a' as usize] = 3;
-    assert!(trie.prefix_event_sources(&flat, &[false], &[], None).is_none());
+    assert!(
+        trie.prefix_event_sources(&flat, &[false], &[], None)
+            .is_none()
+    );
     flat[b'a' as usize] = 0;
-    assert!(trie.prefix_event_sources(&flat, &[false], &[(0, vec![1].into_boxed_slice())], None).is_none());
-    assert_eq!(trie.prefix_event_sources(&flat, &[false], &[], None).unwrap().0, vec![false]);
-    assert_eq!(trie.prefix_event_sources(&flat, &[true], &[], None).unwrap().0, vec![true]);
+    assert!(
+        trie.prefix_event_sources(&flat, &[false], &[(0, vec![1].into_boxed_slice())], None)
+            .is_none()
+    );
+    assert_eq!(
+        trie.prefix_event_sources(&flat, &[false], &[], None)
+            .unwrap()
+            .0,
+        vec![false]
+    );
+    assert_eq!(
+        trie.prefix_event_sources(&flat, &[true], &[], None)
+            .unwrap()
+            .0,
+        vec![true]
+    );
     flat[b'a' as usize] = u32::MAX;
-    assert_eq!(trie.prefix_event_sources(&flat, &[true], &[], Some(&[false])).unwrap().0, vec![false]);
-    assert!(trie.prefix_event_sources(&flat, &[true], &[], Some(&[])).is_none());
+    assert_eq!(
+        trie.prefix_event_sources(&flat, &[true], &[], Some(&[false]))
+            .unwrap()
+            .0,
+        vec![false]
+    );
+    assert!(
+        trie.prefix_event_sources(&flat, &[true], &[], Some(&[]))
+            .is_none()
+    );
 }
 
-pub fn build_token_bounded_analysis_trie_sorted(
-    sequences: &[&[u8]],
-) -> TokenBoundedAnalysisTrie {
+pub fn build_token_bounded_analysis_trie_sorted(sequences: &[&[u8]]) -> TokenBoundedAnalysisTrie {
     TokenBoundedAnalysisTrie {
         nodes: Arc::from(build_byte_trie_sorted(sequences)),
     }
@@ -1415,7 +1487,11 @@ fn filtered_config_groups(
     let mut groups = Vec::<usize>::new();
     for &state in config {
         if finalizers {
-            groups.extend(tokenizer.matched_terminals_iter(state).map(|group| group as usize));
+            groups.extend(
+                tokenizer
+                    .matched_terminals_iter(state)
+                    .map(|group| group as usize),
+            );
         } else {
             groups.extend(
                 tokenizer
@@ -1984,8 +2060,7 @@ impl TokenBoundedAnalysisTopology {
             })
             .collect::<Vec<_>>();
 
-        let mut projected_transitions =
-            vec![u32::MAX; projected_configs.len().saturating_mul(256)];
+        let mut projected_transitions = vec![u32::MAX; projected_configs.len().saturating_mul(256)];
         for topology_source in 0..self.configurations.len() {
             let source = projected_state_by_topology_state[topology_source] as usize;
             if projected_configs[source].is_empty() {
@@ -2342,7 +2417,8 @@ fn build_bounded_analysis_topology_impl_with_expansion(
         (token_visited.len(), suffix_visited.len())
     };
 
-    let expansion_ms = expansion_started_at.map_or(0.0, |started| started.elapsed().as_secs_f64() * 1000.0);
+    let expansion_ms =
+        expansion_started_at.map_or(0.0, |started| started.elapsed().as_secs_f64() * 1000.0);
     let work = TokenBoundedAnalysisWork {
         configurations: configs.len(),
         trie_visits: token_trie_visits + suffix_trie_visits,
@@ -2433,13 +2509,7 @@ pub fn build_bounded_analysis_view(
     tokens: &[&[u8]],
     active_groups: Option<&[bool]>,
 ) -> BoundedAnalysisView {
-    build_bounded_analysis_view_with_trie(
-        tokenizer,
-        raw_start_states,
-        tokens,
-        active_groups,
-        None,
-    )
+    build_bounded_analysis_view_with_trie(tokenizer, raw_start_states, tokens, active_groups, None)
 }
 
 pub fn build_bounded_analysis_view_with_trie(
@@ -2895,10 +2965,16 @@ fn same_partition(left: &[u32], right: &[u32]) -> bool {
     let mut left_to_right = FxHashMap::<u32, u32>::default();
     let mut right_to_left = FxHashMap::<u32, u32>::default();
     for (&left, &right) in left.iter().zip(right) {
-        if left_to_right.insert(left, right).is_some_and(|mapped| mapped != right) {
+        if left_to_right
+            .insert(left, right)
+            .is_some_and(|mapped| mapped != right)
+        {
             return false;
         }
-        if right_to_left.insert(right, left).is_some_and(|mapped| mapped != left) {
+        if right_to_left
+            .insert(right, left)
+            .is_some_and(|mapped| mapped != left)
+        {
             return false;
         }
     }
@@ -3031,11 +3107,8 @@ fn refine_prebuilt_sparse_powerset_worklist(
         return initial_classes.to_vec();
     }
 
-    let candidate_sets_by_config = prebuilt_candidate_target_sets(
-        configurations,
-        raw_to_candidate,
-        raw_active_language,
-    );
+    let candidate_sets_by_config =
+        prebuilt_candidate_target_sets(configurations, raw_to_candidate, raw_active_language);
 
     let initial_class_count = initial_classes
         .iter()
@@ -3110,8 +3183,7 @@ fn refine_prebuilt_sparse_powerset_worklist(
             // candidate path below.
             let old_members = std::mem::take(&mut members_by_class[class]);
             let mut groups = Vec::<(SmallVec<[u32; 64]>, Vec<u32>)>::new();
-            let mut group_by_signature =
-                FxHashMap::<SmallVec<[u32; 64]>, usize>::default();
+            let mut group_by_signature = FxHashMap::<SmallVec<[u32; 64]>, usize>::default();
             for candidate in old_members {
                 let signature = prebuilt_candidate_signature(
                     candidate as usize,
@@ -3122,10 +3194,12 @@ fn refine_prebuilt_sparse_powerset_worklist(
                     edges,
                 );
                 let next_group = groups.len();
-                let group = *group_by_signature.entry(signature.clone()).or_insert_with(|| {
-                    groups.push((signature, Vec::new()));
-                    next_group
-                });
+                let group = *group_by_signature
+                    .entry(signature.clone())
+                    .or_insert_with(|| {
+                        groups.push((signature, Vec::new()));
+                        next_group
+                    });
                 groups[group].1.push(candidate);
             }
 
@@ -3164,13 +3238,10 @@ fn refine_prebuilt_sparse_powerset_worklist(
                 .expect("initialized block has a signature")
                 .clone();
             let dirty = std::mem::take(&mut dirty_by_class[class]);
-            let mut changed_groups =
-                FxHashMap::<SmallVec<[u32; 64]>, Vec<u32>>::default();
+            let mut changed_groups = FxHashMap::<SmallVec<[u32; 64]>, Vec<u32>>::default();
             for candidate in dirty {
                 let candidate = candidate as usize;
-                if !candidate_dirty[candidate]
-                    || class_for_candidate[candidate] as usize != class
-                {
+                if !candidate_dirty[candidate] || class_for_candidate[candidate] as usize != class {
                     continue;
                 }
                 candidate_dirty[candidate] = false;
@@ -3364,9 +3435,8 @@ pub fn compute_state_map_from_prebuilt_sparse_powerset(
     let projected_empty = configurations
         .iter()
         .map(|config| {
-            raw_active_language.is_some_and(|active| {
-                config.iter().all(|&raw| !active[raw as usize])
-            })
+            raw_active_language
+                .is_some_and(|active| config.iter().all(|&raw| !active[raw as usize]))
         })
         .collect::<Vec<_>>();
     let round_limit = match depth {
@@ -3382,8 +3452,7 @@ pub fn compute_state_map_from_prebuilt_sparse_powerset(
         // singleton class set after refinement; map those to the same direct ID
         // so equality remains exactly identical to generic set interning.
         let singleton_id_limit = classes.iter().copied().max().map_or(0, |class| class + 1);
-        let mut composite_class_set_ids =
-            FxHashMap::<SmallVec<[u32; 4]>, u32>::default();
+        let mut composite_class_set_ids = FxHashMap::<SmallVec<[u32; 4]>, u32>::default();
         for (config_id, config) in configurations.iter().enumerate() {
             if let [raw] = config.as_ref() {
                 class_set_by_config[config_id] = classes[raw_to_candidate[*raw as usize]];
@@ -3426,11 +3495,13 @@ pub fn compute_state_map_from_prebuilt_sparse_powerset(
             let candidate_class = classes[candidate];
             next_classes[candidate] = if raw_active_language.is_none() {
                 match &edges[edge_start..edge_end] {
-                    [] => *zero_edge_signatures.entry(candidate_class).or_insert_with(|| {
-                        let class = next_class;
-                        next_class += 1;
-                        class
-                    }),
+                    [] => *zero_edge_signatures
+                        .entry(candidate_class)
+                        .or_insert_with(|| {
+                            let class = next_class;
+                            next_class += 1;
+                            class
+                        }),
                     [(byte, target)] => {
                         let key = (
                             candidate_class,
@@ -3468,11 +3539,13 @@ pub fn compute_state_map_from_prebuilt_sparse_powerset(
                     );
                 }
                 match projected_edges.as_slice() {
-                    [] => *zero_edge_signatures.entry(candidate_class).or_insert_with(|| {
-                        let class = next_class;
-                        next_class += 1;
-                        class
-                    }),
+                    [] => *zero_edge_signatures
+                        .entry(candidate_class)
+                        .or_insert_with(|| {
+                            let class = next_class;
+                            next_class += 1;
+                            class
+                        }),
                     [(byte, target)] => {
                         let key = (
                             candidate_class,
@@ -3735,12 +3808,7 @@ mod tests {
 
     #[test]
     fn state_map_compacts_sparse_worklist_class_labels() {
-        let map = build_state_map(
-            &[vec![0], vec![1], vec![2]],
-            &[0, 1, 2],
-            &[0, 2, 2],
-            3,
-        );
+        let map = build_state_map(&[vec![0], vec![1], vec![2]], &[0, 1, 2], &[0, 2, 2], 3);
 
         assert_eq!(map.original_to_internal, vec![0, 1, 1]);
         assert_eq!(map.internal_to_originals, vec![vec![0], vec![1, 2]]);
@@ -3749,8 +3817,7 @@ mod tests {
 
     #[test]
     fn prebuilt_superset_token_trie_matches_subset_analysis() {
-        let tokenizer =
-            crate::automata::lexer::tokenizer::arbitrary_epsilon_l1_test_tokenizer();
+        let tokenizer = crate::automata::lexer::tokenizer::arbitrary_epsilon_l1_test_tokenizer();
         let raw_states = (0..tokenizer.num_states() as usize).collect::<Vec<_>>();
         let flat_trans = crate::build_flat_transition_table(&tokenizer);
         let parent_tokens: Vec<&[u8]> = vec![b"", b"a", b"aa", b"ab", b"b", b"ba", b"x"];
@@ -3788,11 +3855,9 @@ mod tests {
 
     #[test]
     fn prebuilt_superset_token_trie_matches_bounded_reset_suffix_analysis() {
-        let tokenizer =
-            crate::automata::lexer::tokenizer::arbitrary_epsilon_l1_test_tokenizer();
+        let tokenizer = crate::automata::lexer::tokenizer::arbitrary_epsilon_l1_test_tokenizer();
         let raw_states = (0..tokenizer.num_states() as usize).collect::<Vec<_>>();
-        let parent_tokens: Vec<&[u8]> =
-            vec![b"a", b"aa", b"ab", b"aba", b"b", b"ba", b"x"];
+        let parent_tokens: Vec<&[u8]> = vec![b"a", b"aa", b"ab", b"aba", b"b", b"ba", b"x"];
         let subset_tokens: Vec<&[u8]> = vec![b"aa", b"aba", b"ba"];
         let parent_trie = build_token_bounded_analysis_trie_sorted(&parent_tokens);
         let direct = build_bounded_analysis_view(
@@ -3828,16 +3893,7 @@ mod tests {
     #[test]
     fn sorted_byte_trie_matches_generic_builder() {
         let sequences: Vec<&[u8]> = vec![
-            b"",
-            b"a",
-            b"a",
-            b"aa",
-            b"ab",
-            b"aba",
-            b"b",
-            b"ba",
-            b"z",
-            b"\xff",
+            b"", b"a", b"a", b"aa", b"ab", b"aba", b"b", b"ba", b"z", b"\xff",
         ];
         assert_eq!(
             build_byte_trie(sequences.iter().copied()),
@@ -4159,15 +4215,11 @@ mod tests {
             Expr::U8Seq(b"xq".to_vec()),
             Expr::U8Seq(b"yrr".to_vec()),
         ];
-        let tokenizer = build_regex_partitioned_with_adaptive(
-            &expressions,
-            &[0, 1, 2],
-            false,
-        )
-        .into_tokenizer(
-            expressions.len() as u32,
-            Some(Arc::from(expressions.into_boxed_slice())),
-        );
+        let tokenizer = build_regex_partitioned_with_adaptive(&expressions, &[0, 1, 2], false)
+            .into_tokenizer(
+                expressions.len() as u32,
+                Some(Arc::from(expressions.into_boxed_slice())),
+            );
         let view = build_relevant_powerset_view(
             &tokenizer,
             &[true; 256],
@@ -4177,7 +4229,9 @@ mod tests {
         let start_config = &view.configurations[view.start_state];
         assert!(!start_config.is_empty());
         assert!(start_config.iter().all(|&state| {
-            tokenizer.matched_terminals_iter(state).any(|terminal| terminal == 0)
+            tokenizer
+                .matched_terminals_iter(state)
+                .any(|terminal| terminal == 0)
                 || tokenizer
                     .possible_future_terminals_iter(state)
                     .any(|terminal| terminal == 0)
@@ -4185,7 +4239,11 @@ mod tests {
         let edge_start = view.edge_offsets[view.start_state] as usize;
         let edge_end = view.edge_offsets[view.start_state + 1] as usize;
         let start_edges = &view.edges[edge_start..edge_end];
-        assert!(!start_edges.iter().any(|&(byte, _)| byte == b'x' || byte == b'y'));
+        assert!(
+            !start_edges
+                .iter()
+                .any(|&(byte, _)| byte == b'x' || byte == b'y')
+        );
     }
 
     #[test]
@@ -4198,15 +4256,11 @@ mod tests {
             Expr::U8Seq(b"xq".to_vec()),
             Expr::U8Seq(b"yrr".to_vec()),
         ];
-        let tokenizer = build_regex_partitioned_with_adaptive(
-            &expressions,
-            &[0, 1, 2],
-            false,
-        )
-        .into_tokenizer(
-            expressions.len() as u32,
-            Some(Arc::from(expressions.into_boxed_slice())),
-        );
+        let tokenizer = build_regex_partitioned_with_adaptive(&expressions, &[0, 1, 2], false)
+            .into_tokenizer(
+                expressions.len() as u32,
+                Some(Arc::from(expressions.into_boxed_slice())),
+            );
         let raw_start_states = (0..tokenizer.num_states() as usize).collect::<Vec<_>>();
         let tokens = [
             b"a".as_slice(),
@@ -4408,12 +4462,8 @@ mod tests {
                 relevant_bytes[byte as usize] = true;
             }
         }
-        let powerset = build_relevant_powerset_view(
-            &tokenizer,
-            &relevant_bytes,
-            Some(&active_groups),
-            None,
-        );
+        let powerset =
+            build_relevant_powerset_view(&tokenizer, &relevant_bytes, Some(&active_groups), None);
         let raw_start_to_powerset = Arc::clone(&powerset.raw_start_to_view);
         let powerset = powerset.into_tokenizer_view();
 
@@ -4454,7 +4504,12 @@ mod tests {
         relevant_bytes[b'a' as usize] = true;
         relevant_bytes[b'b' as usize] = true;
 
-        for active_groups in [None, Some([true, true]), Some([true, false]), Some([false, true])] {
+        for active_groups in [
+            None,
+            Some([true, true]),
+            Some([true, false]),
+            Some([false, true]),
+        ] {
             let active_groups = active_groups.as_ref().map(<[_; 2]>::as_slice);
             let scalar = try_build_relevant_powerset_view(
                 &tokenizer,
@@ -4504,12 +4559,8 @@ mod tests {
                 relevant_bytes[byte as usize] = true;
             }
         }
-        let powerset = build_relevant_powerset_view(
-            &tokenizer,
-            &relevant_bytes,
-            Some(&active_groups),
-            None,
-        );
+        let powerset =
+            build_relevant_powerset_view(&tokenizer, &relevant_bytes, Some(&active_groups), None);
         let restricted = build_bounded_analysis_view_from_relevant_powerset(
             &powerset,
             &raw_start_states,
@@ -4570,7 +4621,12 @@ mod tests {
         let raw_start_states = (0..tokenizer.num_states() as usize).collect::<Vec<_>>();
         let exhaustive = binary_inputs(4);
         let sparse_cases = vec![
-            vec![Vec::new(), b"ab".to_vec(), b"baa".to_vec(), b"bbbb".to_vec()],
+            vec![
+                Vec::new(),
+                b"ab".to_vec(),
+                b"baa".to_vec(),
+                b"bbbb".to_vec(),
+            ],
             vec![b"a".to_vec(), b"bb".to_vec(), b"aaba".to_vec()],
         ];
         let mut token_cases = vec![exhaustive];
@@ -4650,12 +4706,8 @@ mod tests {
             None,
             RefinementDepth::Stable,
         );
-        let raw_powerset = build_relevant_powerset_view(
-            &tokenizer,
-            &relevant_bytes,
-            Some(&active_groups),
-            None,
-        );
+        let raw_powerset =
+            build_relevant_powerset_view(&tokenizer, &relevant_bytes, Some(&active_groups), None);
         let quotient_powerset = build_relevant_powerset_view(
             &tokenizer,
             &relevant_bytes,
@@ -4721,16 +4773,16 @@ mod tests {
         let tokenizer = arbitrary_epsilon_l1_test_tokenizer();
         let relevant = [true; 256];
         let inactive_groups = [false, false];
-        let view = build_relevant_powerset_view(
-            &tokenizer,
-            &relevant,
-            Some(&inactive_groups),
-            None,
-        );
+        let view =
+            build_relevant_powerset_view(&tokenizer, &relevant, Some(&inactive_groups), None);
 
         assert!(view.configurations.iter().all(|config| config.is_empty()));
         assert!(view.edges.is_empty());
-        assert!(view.raw_start_to_view.iter().all(|&state| state == view.start_state as u32));
+        assert!(
+            view.raw_start_to_view
+                .iter()
+                .all(|&state| state == view.start_state as u32)
+        );
     }
 
     #[test]
@@ -4750,7 +4802,10 @@ mod tests {
             },
         )
         .expect("budget equal to realized exact work must succeed");
-        assert_eq!(generous.configurations.as_ref(), reference.configurations.as_ref());
+        assert_eq!(
+            generous.configurations.as_ref(),
+            reference.configurations.as_ref()
+        );
         assert_eq!(generous.edge_offsets, reference.edge_offsets);
         assert_eq!(generous.edges, reference.edges);
 
@@ -4776,13 +4831,7 @@ mod tests {
         let mut relevant = [false; 256];
         relevant[b'a' as usize] = true;
         relevant[b'b' as usize] = true;
-        let map = compute_state_map(
-            &tokenizer,
-            &relevant,
-            None,
-            None,
-            RefinementDepth::Stable,
-        );
+        let map = compute_state_map(&tokenizer, &relevant, None, None, RefinementDepth::Stable);
         assert_ne!(map.original_to_internal[2], map.original_to_internal[4]);
         assert_ne!(map.original_to_internal[1], map.original_to_internal[2]);
     }
@@ -4792,13 +4841,7 @@ mod tests {
         let tokenizer = arbitrary_epsilon_l1_test_tokenizer();
         let relevant = [true; 256];
         let identity = super::super::identity_state_map(tokenizer.num_states() as usize);
-        let direct = compute_state_map(
-            &tokenizer,
-            &relevant,
-            None,
-            None,
-            RefinementDepth::Stable,
-        );
+        let direct = compute_state_map(&tokenizer, &relevant, None, None, RefinementDepth::Stable);
         let from_identity = compute_state_map(
             &tokenizer,
             &relevant,
@@ -4886,13 +4929,7 @@ mod tests {
         let mut relevant = [false; 256];
         relevant[b'a' as usize] = true;
         relevant[b'b' as usize] = true;
-        let direct = compute_state_map(
-            &tokenizer,
-            &relevant,
-            None,
-            None,
-            RefinementDepth::Stable,
-        );
+        let direct = compute_state_map(&tokenizer, &relevant, None, None, RefinementDepth::Stable);
         let view = build_relevant_powerset_view(&tokenizer, &relevant, None, None);
         let mut output_ids = FxHashMap::<Vec<u64>, u32>::default();
         let output_class_by_config = view
@@ -4944,12 +4981,7 @@ mod tests {
         relevant[b'a' as usize] = true;
         relevant[b'b' as usize] = true;
         let active_groups = [true, false];
-        let view = build_relevant_powerset_view(
-            &tokenizer,
-            &relevant,
-            Some(&active_groups),
-            None,
-        );
+        let view = build_relevant_powerset_view(&tokenizer, &relevant, Some(&active_groups), None);
         let output_class_by_config = powerset_output_class_ids(&view);
         let active_language = raw_active_language_states(&tokenizer, Some(&active_groups))
             .expect("active group projection");
@@ -5034,10 +5066,7 @@ mod tests {
             for _ in 0..configurations.len() {
                 for byte in 0..5u8 {
                     if next_u32(&mut rng) & 1 != 0 {
-                        edges.push((
-                            byte,
-                            next_u32(&mut rng) % configurations.len() as u32,
-                        ));
+                        edges.push((byte, next_u32(&mut rng) % configurations.len() as u32));
                     }
                 }
                 edge_offsets.push(edges.len() as u32);
@@ -5128,17 +5157,11 @@ mod tests {
 
     #[test]
     fn bounded_analysis_view_materializes_reset_suffix_transitions_from_start_state() {
-        let tokenizer =
-            crate::automata::lexer::tokenizer::arbitrary_epsilon_l1_test_tokenizer();
+        let tokenizer = crate::automata::lexer::tokenizer::arbitrary_epsilon_l1_test_tokenizer();
         let raw_states = (0..tokenizer.num_states() as usize).collect::<Vec<_>>();
         let tokens: Vec<&[u8]> = vec![b"xa", b"xaa", b"xb"];
-        let bounded = build_bounded_analysis_view_with_trie(
-            &tokenizer,
-            &raw_states,
-            &tokens,
-            None,
-            None,
-        );
+        let bounded =
+            build_bounded_analysis_view_with_trie(&tokenizer, &raw_states, &tokens, None, None);
         let dfa = bounded.tokenizer_view.dfa();
         let start_state = dfa.start_state;
         let trans_a = dfa.trans(start_state, b'a' as usize);

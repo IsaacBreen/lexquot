@@ -5,14 +5,14 @@ use std::hash::{Hash, Hasher};
 use std::ops::Index;
 use std::sync::OnceLock;
 
-use rustc_hash::{FxHashSet, FxHasher};
 use rayon::prelude::*;
+use rustc_hash::{FxHashSet, FxHasher};
 use serde::ser::SerializeSeq;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use smallvec::SmallVec;
 
-use crate::ds::char_transitions::CharTransitions;
 use crate::ds::bitset::BitSet;
+use crate::ds::char_transitions::CharTransitions;
 use crate::ds::u8set::U8Set;
 
 pub(super) type GroupId = u32;
@@ -452,8 +452,7 @@ fn decode_epsilon_wire_states(
             .transitions
             .get(2)
             .copied()
-            .ok_or("lexer epsilon metadata omitted source state")?
-            as usize;
+            .ok_or("lexer epsilon metadata omitted source state")? as usize;
         if source >= real_state_count {
             return Err("lexer epsilon metadata source is out of range");
         }
@@ -529,8 +528,8 @@ impl<'de> Deserialize<'de> for DFA {
         D: Deserializer<'de>,
     {
         let mut wire = DfaWire::deserialize(deserializer)?;
-        let epsilon_transitions = decode_epsilon_wire_states(&mut wire.states)
-            .map_err(serde::de::Error::custom)?;
+        let epsilon_transitions =
+            decode_epsilon_wire_states(&mut wire.states).map_err(serde::de::Error::custom)?;
         let mut states = wire
             .states
             .into_iter()
@@ -908,10 +907,7 @@ impl DFA {
 
         let total_groups = self.group_id_to_u8set.len();
         let identity_groups = component.group_id_to_u8set.len() == total_groups
-            && global_group_ids
-                .iter()
-                .copied()
-                .eq(0..total_groups);
+            && global_group_ids.iter().copied().eq(0..total_groups);
         let rebase_state = |state: &mut DFAState| {
             for (_, target) in state.transitions.iter_mut() {
                 *target = target
@@ -1035,10 +1031,7 @@ impl DFA {
 
         let total_groups = self.group_id_to_u8set.len();
         let identity_groups = component.group_id_to_u8set.len() == total_groups
-            && global_group_ids
-                .iter()
-                .copied()
-                .eq(0..total_groups);
+            && global_group_ids.iter().copied().eq(0..total_groups);
         let clone_rebased = |source: &DFAState| {
             let mut state = source.clone();
             for (_, target) in state.transitions.iter_mut() {
@@ -1070,16 +1063,25 @@ impl DFA {
             // the iterator has an exact size, so `Vec::extend` reserves once
             // and writes the cloned/rebased states directly into the parent.
             self.states.reserve(component.states.len());
-            self.states.extend(component.states.iter().map(clone_rebased));
+            self.states
+                .extend(component.states.iter().map(clone_rebased));
             return offset;
         }
         let appended = if component.states.len() >= 4096
             && rayon::current_num_threads() > 1
             && std::env::var_os("LEXQUOT_SERIAL_APPEND_REBASE").is_none()
         {
-            component.states.par_iter().map(clone_rebased).collect::<Vec<_>>()
+            component
+                .states
+                .par_iter()
+                .map(clone_rebased)
+                .collect::<Vec<_>>()
         } else {
-            component.states.iter().map(clone_rebased).collect::<Vec<_>>()
+            component
+                .states
+                .iter()
+                .map(clone_rebased)
+                .collect::<Vec<_>>()
         };
         self.states.extend(appended);
         offset
@@ -1271,19 +1273,11 @@ impl DFA {
                 break;
             }
         }
-        if shallow_dispatch
-            && let Some(dispatch) = epsilon_source
-        {
-            let mut dispatch_closure = Vec::with_capacity(
-                self.states[dispatch].epsilon_transitions.len() + 1,
-            );
+        if shallow_dispatch && let Some(dispatch) = epsilon_source {
+            let mut dispatch_closure =
+                Vec::with_capacity(self.states[dispatch].epsilon_transitions.len() + 1);
             dispatch_closure.push(dispatch as u32);
-            dispatch_closure.extend(
-                self.states[dispatch]
-                    .epsilon_transitions
-                    .iter()
-                    .copied(),
-            );
+            dispatch_closure.extend(self.states[dispatch].epsilon_transitions.iter().copied());
             dispatch_closure.sort_unstable();
             dispatch_closure.dedup();
             let identities = (0..state_count as u32)
@@ -1444,9 +1438,15 @@ impl DFA {
         if aliases.is_empty() {
             return;
         }
-        let alias_set = aliases.iter().copied().collect::<std::collections::BTreeSet<_>>();
+        let alias_set = aliases
+            .iter()
+            .copied()
+            .collect::<std::collections::BTreeSet<_>>();
         for state in &mut self.states {
-            let finalizes_alias = state.finalizers.iter().any(|group| alias_set.contains(&group));
+            let finalizes_alias = state
+                .finalizers
+                .iter()
+                .any(|group| alias_set.contains(&group));
             let futures_alias = state
                 .possible_future_group_ids
                 .iter()
@@ -1613,7 +1613,8 @@ impl DFA {
     ) -> bool {
         let mut changed = false;
         for state in &mut self.states {
-            for group_index in intersection_missing_group_indices(&state.finalizers, intersections) {
+            for group_index in intersection_missing_group_indices(&state.finalizers, intersections)
+            {
                 if state.finalizers.contains(group_index) {
                     state.finalizers.clear(group_index);
                     changed = true;
@@ -1699,7 +1700,11 @@ mod tests {
     }
 
     fn owned_wire_bytes(dfa: &DFA) -> Vec<u8> {
-        let mut states = dfa.states.iter().map(DfaStateWire::from).collect::<Vec<_>>();
+        let mut states = dfa
+            .states
+            .iter()
+            .map(DfaStateWire::from)
+            .collect::<Vec<_>>();
         let real_state_count = states.len();
         let mut metadata_state_count = 0usize;
         for (source, state) in dfa.states.iter().enumerate() {
@@ -2061,12 +2066,7 @@ mod tests {
                     seen[state_index] = true;
                     expected.union_with(&dfa.states[state_index].finalizers);
                     stack.extend(dfa.states[state_index].epsilon_transitions.iter().copied());
-                    stack.extend(
-                        dfa.states[state_index]
-                            .transitions
-                            .values()
-                            .copied(),
-                    );
+                    stack.extend(dfa.states[state_index].transitions.values().copied());
                 }
 
                 assert_eq!(

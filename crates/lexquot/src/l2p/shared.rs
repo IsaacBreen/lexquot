@@ -22,7 +22,9 @@ pub struct TokenDedup<'a> {
 #[inline]
 pub fn hash_byte_class_seq(bytes: &[u8], byte_to_class: &[u8; 256]) -> u128 {
     let mut hash: u128 = 0xFF51_AFD7_ED55_8CCD;
-    hash = hash.wrapping_mul(0xC4CE_B9FE_1A85_EC53).wrapping_add(bytes.len() as u128);
+    hash = hash
+        .wrapping_mul(0xC4CE_B9FE_1A85_EC53)
+        .wrapping_add(bytes.len() as u128);
     for &byte in bytes {
         hash = hash
             .wrapping_mul(0x9E37_79B9_7F4A_7C15)

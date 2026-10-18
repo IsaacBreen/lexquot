@@ -8,9 +8,7 @@ use std::time::Instant;
 use crate::automata::lexer::tokenizer::Tokenizer;
 use crate::equiv_types::ManyToOneIdMap;
 
-fn build_transition_table(
-    transitions: impl Iterator<Item = (u8, u32)>,
-) -> [u32; 256] {
+fn build_transition_table(transitions: impl Iterator<Item = (u8, u32)>) -> [u32; 256] {
     let mut table = [u32::MAX; 256];
     for (byte, target) in transitions {
         table[byte as usize] = target;
@@ -154,8 +152,8 @@ pub fn derive_flat_transition_cache(
             let actual = transitions[base + byte as usize];
             debug_assert_eq!(actual, target);
             let delta = (target as u64).wrapping_sub(dead as u64);
-            column_hashes[byte as usize] = column_hashes[byte as usize]
-                .wrapping_add(delta.wrapping_mul(row_weight[state]));
+            column_hashes[byte as usize] =
+                column_hashes[byte as usize].wrapping_add(delta.wrapping_mul(row_weight[state]));
             if target == state as u32 {
                 self_loops.insert(byte);
             }
@@ -170,7 +168,6 @@ pub fn derive_flat_transition_cache(
     }
 }
 
-
 pub fn compute_byte_classes(dfa: &FlatDfa) -> [u8; 256] {
     let mut column_hashes = [0u64; 256];
     for row in dfa.transitions.chunks_exact(256) {
@@ -182,7 +179,6 @@ pub fn compute_byte_classes(dfa: &FlatDfa) -> [u8; 256] {
     }
     byte_classes_from_column_hashes(&dfa.transitions, dfa.states.len(), &column_hashes)
 }
-
 
 /// Exact byte congruence of the selected terminal languages.
 ///
@@ -212,7 +208,12 @@ pub fn compute_active_physical_byte_classes_from_flat_trans(
             tokenizer
                 .matched_terminals_iter(state as u32)
                 .chain(tokenizer.possible_future_terminals_iter(state as u32))
-                .any(|terminal| active_groups.get(terminal as usize).copied().unwrap_or(false))
+                .any(|terminal| {
+                    active_groups
+                        .get(terminal as usize)
+                        .copied()
+                        .unwrap_or(false)
+                })
         })
         .collect::<Vec<_>>();
 
@@ -268,7 +269,6 @@ pub fn compute_active_physical_byte_classes_from_flat_trans(
     classes
 }
 
-
 pub fn compute_active_terminal_language_byte_classes(
     tokenizer: &Tokenizer,
     active_groups: &[bool],
@@ -296,7 +296,6 @@ pub fn compute_active_terminal_language_byte_classes(
     let active_view = TokenizerView::new(&active_tokenizer);
     Some(compute_byte_classes(active_view.dfa()))
 }
-
 
 #[inline]
 fn state_has_active_language(state: &FlatDfaState) -> bool {
@@ -412,10 +411,7 @@ impl FlatDfa {
 
     /// Build a FlatDfa using a pre-built flat transition table, sharing the
     /// transition data via Arc. Copies all finalizers/futures without filtering.
-    pub fn from_flat_trans(
-        flat_trans: &Arc<[u32]>,
-        tokenizer: &Tokenizer,
-    ) -> Self {
+    pub fn from_flat_trans(flat_trans: &Arc<[u32]>, tokenizer: &Tokenizer) -> Self {
         let start_state = tokenizer.start_state() as usize;
         let states: Vec<FlatDfaState> = (0..tokenizer.num_states() as usize)
             .map(|i| {
@@ -428,7 +424,11 @@ impl FlatDfa {
                 }
             })
             .collect();
-        FlatDfa { states, start_state, transitions: Arc::clone(flat_trans) }
+        FlatDfa {
+            states,
+            start_state,
+            transitions: Arc::clone(flat_trans),
+        }
     }
 
     /// Build an active-terminal DFA view from a shared raw transition table.
@@ -462,7 +462,6 @@ impl FlatDfa {
             transitions,
         }
     }
-
 }
 
 /// A thin wrapper around glrmask's `Tokenizer` that exposes the flattened DFA.
@@ -490,10 +489,7 @@ impl TokenizerView {
 
     /// Build a view using a pre-built shared flat transition table (no group filtering).
     /// Shares transition data via Arc — zero-copy.
-    pub fn new_from_flat_trans(
-        flat_trans: &Arc<[u32]>,
-        tokenizer: &Tokenizer,
-    ) -> Self {
+    pub fn new_from_flat_trans(flat_trans: &Arc<[u32]>, tokenizer: &Tokenizer) -> Self {
         TokenizerView {
             flat_dfa: FlatDfa::from_flat_trans(flat_trans, tokenizer),
         }
@@ -529,16 +525,28 @@ impl TokenizerView {
         state_map: &ManyToOneIdMap,
     ) -> (Self, f64) {
         let raw_states = tokenizer.num_states() as usize;
-        assert_eq!(flat_trans.len(), raw_states * 256, "invalid raw transition table");
-        assert_eq!(state_map.original_to_internal.len(), raw_states, "invalid state map");
+        assert_eq!(
+            flat_trans.len(),
+            raw_states * 256,
+            "invalid raw transition table"
+        );
+        assert_eq!(
+            state_map.original_to_internal.len(),
+            raw_states,
+            "invalid state map"
+        );
         let quotient_states = state_map.internal_to_originals.len();
         let mut transitions = vec![u32::MAX; quotient_states * 256];
         let mut states = Vec::with_capacity(quotient_states);
         let profile_timing = std::env::var_os("LEXQUOT_PROFILE_L2P_TIMING").is_some();
         let filter_started_at = profile_timing.then(Instant::now);
-        for (internal, &representative) in state_map.representative_original_ids.iter().enumerate() {
+        for (internal, &representative) in state_map.representative_original_ids.iter().enumerate()
+        {
             let representative = representative as usize;
-            assert!(representative < raw_states, "invalid quotient representative");
+            assert!(
+                representative < raw_states,
+                "invalid quotient representative"
+            );
             let finalizers = collect_filtered_group_ids(
                 tokenizer.matched_terminals_iter(representative as u32),
                 active_groups,
@@ -590,9 +598,21 @@ impl TokenizerView {
         observation_representatives: &[u32],
     ) -> (Self, f64) {
         let raw_states = tokenizer.num_states() as usize;
-        assert_eq!(flat_trans.len(), raw_states * 256, "invalid raw transition table");
-        assert_eq!(state_map.original_to_internal.len(), raw_states, "invalid state map");
-        assert_eq!(raw_observation_ids.len(), raw_states, "invalid observation IDs");
+        assert_eq!(
+            flat_trans.len(),
+            raw_states * 256,
+            "invalid raw transition table"
+        );
+        assert_eq!(
+            state_map.original_to_internal.len(),
+            raw_states,
+            "invalid state map"
+        );
+        assert_eq!(
+            raw_observation_ids.len(),
+            raw_states,
+            "invalid observation IDs"
+        );
 
         let profile_timing = std::env::var_os("LEXQUOT_PROFILE_L2P_TIMING").is_some();
         let started_at = profile_timing.then(Instant::now);
@@ -600,7 +620,10 @@ impl TokenizerView {
             .iter()
             .map(|&representative| {
                 let representative = representative as usize;
-                assert!(representative < raw_states, "invalid observation representative");
+                assert!(
+                    representative < raw_states,
+                    "invalid observation representative"
+                );
                 FlatDfaState {
                     finalizers: collect_filtered_group_ids(
                         tokenizer.matched_terminals_iter(representative as u32),
@@ -617,7 +640,8 @@ impl TokenizerView {
         let quotient_states = state_map.internal_to_originals.len();
         let mut transitions = vec![u32::MAX; quotient_states * 256];
         let mut states = Vec::with_capacity(quotient_states);
-        for (internal, &representative) in state_map.representative_original_ids.iter().enumerate() {
+        for (internal, &representative) in state_map.representative_original_ids.iter().enumerate()
+        {
             let representative = representative as usize;
             let observation = raw_observation_ids[representative] as usize;
             states.push(
@@ -713,12 +737,13 @@ impl TokenizerView {
             .iter()
             .map(|state| !state_has_active_language(state))
             .collect::<Vec<_>>();
-        let base = super::vocab::fast::SharedVocabDfaBase::build_from_raw_quotient_for_relevant_bytes(
-            flat_trans,
-            state_map,
-            relevant_bytes,
-            Some(&active_dead_classes),
-        )?;
+        let base =
+            super::vocab::fast::SharedVocabDfaBase::build_from_raw_quotient_for_relevant_bytes(
+                flat_trans,
+                state_map,
+                relevant_bytes,
+                Some(&active_dead_classes),
+            )?;
         Some((
             Self {
                 flat_dfa: FlatDfa {
@@ -803,9 +828,13 @@ impl TokenizerView {
         let quotient_states = state_map.internal_to_originals.len();
         let mut transitions = vec![u32::MAX; quotient_states * 256];
         let mut states = Vec::with_capacity(quotient_states);
-        for (internal, &representative) in state_map.representative_original_ids.iter().enumerate() {
+        for (internal, &representative) in state_map.representative_original_ids.iter().enumerate()
+        {
             let representative = representative as usize;
-            assert!(representative < dfa.states.len(), "invalid quotient representative");
+            assert!(
+                representative < dfa.states.len(),
+                "invalid quotient representative"
+            );
             let source = &dfa.states[representative];
             states.push(FlatDfaState {
                 finalizers: source.finalizers.clone(),
@@ -834,9 +863,7 @@ impl TokenizerView {
             },
         }
     }
-
 }
-
 
 #[cfg(test)]
 mod sparse_transition_cache_tests {
@@ -856,9 +883,7 @@ mod sparse_transition_cache_tests {
         }
 
         fn same_partition(left: &[u8; 256], right: &[u8; 256]) -> bool {
-            (0..256).all(|a| {
-                (0..256).all(|b| (left[a] == left[b]) == (right[a] == right[b]))
-            })
+            (0..256).all(|a| (0..256).all(|b| (left[a] == left[b]) == (right[a] == right[b])))
         }
 
         let with_inactive = tokenizer(vec![
@@ -873,9 +898,22 @@ mod sparse_transition_cache_tests {
         let filtered_classes = compute_byte_classes(filtered.dfa());
         let reference_classes = compute_byte_classes(reference.dfa());
 
-        assert_eq!(filtered.dfa().trans(filtered.dfa().start_state, b'x' as usize), u32::MAX);
-        assert_eq!(filtered.dfa().trans(filtered.dfa().start_state, b'y' as usize), u32::MAX);
-        assert_eq!(filtered_classes[b'x' as usize], filtered_classes[b'y' as usize]);
+        assert_eq!(
+            filtered
+                .dfa()
+                .trans(filtered.dfa().start_state, b'x' as usize),
+            u32::MAX
+        );
+        assert_eq!(
+            filtered
+                .dfa()
+                .trans(filtered.dfa().start_state, b'y' as usize),
+            u32::MAX
+        );
+        assert_eq!(
+            filtered_classes[b'x' as usize],
+            filtered_classes[b'y' as usize]
+        );
         assert!(
             same_partition(&filtered_classes, &reference_classes),
             "inactive-only lexer topology changed the active-language byte congruence",

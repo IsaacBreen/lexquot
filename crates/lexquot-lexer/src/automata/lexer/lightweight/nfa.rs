@@ -3,7 +3,7 @@ use std::collections::{BTreeSet, HashMap, VecDeque};
 use crate::ds::bitset::BitSet;
 use crate::ds::u8set::U8Set;
 
-use super::super::dfa::{DFA as LexerDfa, DEAD};
+use super::super::dfa::{DEAD, DFA as LexerDfa};
 use super::super::nfa::NFA as LexerNfa;
 
 type TransitionTable = [u32; 256];
@@ -247,12 +247,8 @@ impl Nfa {
 
             for (next_product, bytes) in Self::product_successors(product, &lhs_tables, &rhs_tables)
             {
-                let next_state = Self::product_state_id(
-                    next_product,
-                    &mut state_ids,
-                    &mut worklist,
-                    &mut out,
-                );
+                let next_state =
+                    Self::product_state_id(next_product, &mut state_ids, &mut worklist, &mut out);
                 out.add_u8set_transition(out_state, bytes, next_state);
             }
         }
@@ -302,9 +298,8 @@ impl Nfa {
         dfa.ensure_group_capacity(1);
 
         for (state_id, state) in self.states.iter().enumerate() {
-            let entries = Self::sorted_transition_entries(Self::group_target_bytes(
-                &state.transitions,
-            ));
+            let entries =
+                Self::sorted_transition_entries(Self::group_target_bytes(&state.transitions));
             dfa.set_transitions_from_sorted_entries(state_id as u32, entries);
 
             let mut finalizers = BitSet::new(1);

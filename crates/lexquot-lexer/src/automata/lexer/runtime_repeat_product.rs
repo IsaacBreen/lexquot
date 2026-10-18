@@ -6,9 +6,9 @@
 //! component residuals.  We intern product residuals only when runtime input
 //! reaches them; the two regex bounds never determine an allocation size.
 
+use std::collections::VecDeque;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
-use std::collections::VecDeque;
 
 use rustc_hash::FxHashMap;
 use smallvec::SmallVec;
@@ -72,7 +72,9 @@ impl VirtualRuntimeStateOwners {
         let mut root_owners = FxHashMap::default();
         for (owner, &root) in roots.iter().enumerate() {
             if root >= physical_state_count
-                || root_owners.insert(root, u32::try_from(owner).ok()?).is_some()
+                || root_owners
+                    .insert(root, u32::try_from(owner).ok()?)
+                    .is_some()
             {
                 return None;
             }
@@ -169,16 +171,35 @@ impl VirtualBinaryRepeatIntersectionMaskProjection {
     /// and the hash-map iteration order of the exact runtime's interner.
     #[doc(hidden)]
     pub fn observation_descriptor(&self) -> Vec<u8> {
-        let mut entries = self.mask_state_by_residual.iter().map(|(key, &state)|
-            (key.left.required, key.left.remaining, key.left.body_state,
-                key.right.required, key.right.remaining, key.right.body_state, state))
+        let mut entries = self
+            .mask_state_by_residual
+            .iter()
+            .map(|(key, &state)| {
+                (
+                    key.left.required,
+                    key.left.remaining,
+                    key.left.body_state,
+                    key.right.required,
+                    key.right.remaining,
+                    key.right.body_state,
+                    state,
+                )
+            })
             .collect::<Vec<_>>();
         entries.sort_unstable();
-        bincode::serialize(&(self.far, self.lower_far, self.runtime.terminal,
-            self.runtime.physical_state_count, self.runtime.root_state,
-            self.runtime.left.min, self.runtime.left.max,
-            self.runtime.right.min, self.runtime.right.max, entries))
-            .expect("finite product descriptor serialization")
+        bincode::serialize(&(
+            self.far,
+            self.lower_far,
+            self.runtime.terminal,
+            self.runtime.physical_state_count,
+            self.runtime.root_state,
+            self.runtime.left.min,
+            self.runtime.left.max,
+            self.runtime.right.min,
+            self.runtime.right.max,
+            entries,
+        ))
+        .expect("finite product descriptor serialization")
     }
 
     #[inline]
@@ -188,9 +209,7 @@ impl VirtualBinaryRepeatIntersectionMaskProjection {
         }
         let store = self.runtime.store.lock().unwrap();
         let exact = self.runtime.residual_for_state_locked(&store, full_state)?;
-        let projected = self
-            .runtime
-            .mask_residual(exact, self.far, self.lower_far);
+        let projected = self.runtime.mask_residual(exact, self.far, self.lower_far);
         self.mask_state_by_residual.get(&projected).copied()
     }
 }
@@ -340,9 +359,7 @@ impl VirtualBinaryRepeatIntersectionRuntime {
         let left_states = left.base_dfa.num_states();
         let right_states = right.base_dfa.num_states();
         let pair_count = left_states.checked_mul(right_states)?;
-        if pair_count == 0
-            || pair_count > u32::MAX as usize
-            || pair_count > MAX_BODY_PRODUCT_STATES
+        if pair_count == 0 || pair_count > u32::MAX as usize || pair_count > MAX_BODY_PRODUCT_STATES
         {
             return None;
         }
@@ -399,10 +416,8 @@ impl VirtualBinaryRepeatIntersectionRuntime {
                         let Some(right_cost) = right_cost.checked_add(edge.right_completed) else {
                             return None;
                         };
-                        changed |= Self::insert_pareto(
-                            &mut requirements[source],
-                            (left_cost, right_cost),
-                        );
+                        changed |=
+                            Self::insert_pareto(&mut requirements[source], (left_cost, right_cost));
                     }
                 }
             }
@@ -578,10 +593,7 @@ impl VirtualBinaryRepeatIntersectionRuntime {
         lower_far: u32,
     ) -> MaskRepeatResidual {
         MaskRepeatResidual {
-            required: spec
-                .min
-                .saturating_sub(residual.completed)
-                .min(lower_far),
+            required: spec.min.saturating_sub(residual.completed).min(lower_far),
             remaining: spec.max.saturating_sub(residual.completed).min(far),
             body_state: residual.body_state,
         }
@@ -649,13 +661,7 @@ impl VirtualBinaryRepeatIntersectionRuntime {
     ) -> Option<MaskProductResidual> {
         Some(MaskProductResidual {
             left: Self::step_mask_component(&self.left, residual.left, far, lower_far, byte)?,
-            right: Self::step_mask_component(
-                &self.right,
-                residual.right,
-                far,
-                lower_far,
-                byte,
-            )?,
+            right: Self::step_mask_component(&self.right, residual.right, far, lower_far, byte)?,
         })
     }
 
@@ -674,9 +680,11 @@ impl VirtualBinaryRepeatIntersectionRuntime {
         else {
             return false;
         };
-        self.future_requirements[index].iter().any(|&(left, right)| {
-            left <= residual.left.remaining && right <= residual.right.remaining
-        })
+        self.future_requirements[index]
+            .iter()
+            .any(|&(left, right)| {
+                left <= residual.left.remaining && right <= residual.right.remaining
+            })
     }
 
     /// Build the finite observation DFA used for one model-token walk.
@@ -727,10 +735,7 @@ impl VirtualBinaryRepeatIntersectionRuntime {
         if synchronized_nonzero {
             let stencil_side = usize::try_from(lower_far).ok()?.checked_add(1)?;
             let boundary_seed_upper_bound = stencil_side.checked_mul(2)?.checked_add(1)?;
-            if dfa
-                .num_states()
-                .checked_add(boundary_seed_upper_bound)?
-                > MAX_MASK_PROJECTION_STATES
+            if dfa.num_states().checked_add(boundary_seed_upper_bound)? > MAX_MASK_PROJECTION_STATES
             {
                 return None;
             }
@@ -762,11 +767,7 @@ impl VirtualBinaryRepeatIntersectionRuntime {
         } else {
             let boundary_side = usize::try_from(far).ok()?.checked_add(1)?;
             let boundary_seed_states = boundary_side.checked_mul(boundary_side)?;
-            if dfa
-                .num_states()
-                .checked_add(boundary_seed_states)?
-                > MAX_MASK_PROJECTION_STATES
-            {
+            if dfa.num_states().checked_add(boundary_seed_states)? > MAX_MASK_PROJECTION_STATES {
                 return None;
             }
             for left_remaining in 0..=far {
@@ -923,7 +924,11 @@ impl VirtualBinaryRepeatIntersectionRuntime {
 
     pub(super) fn finalizers(&self, state: u32) -> Option<&BitSet> {
         let (accepting, _) = self.observation(state)?;
-        Some(if accepting { &self.accepting } else { &self.dead })
+        Some(if accepting {
+            &self.accepting
+        } else {
+            &self.dead
+        })
     }
 
     pub(super) fn finalizer_list(&self, state: u32) -> Option<&[TerminalID]> {

@@ -17,13 +17,17 @@ pub fn restrict_quotient_to_initial_domain(
     domain: &ManyToOneIdMap,
 ) -> Option<ManyToOneIdMap> {
     let n = domain.original_to_internal.len();
-    if quotient.original_to_internal.len() != n { return None; }
+    if quotient.original_to_internal.len() != n {
+        return None;
+    }
     let mut remap = vec![u32::MAX; quotient.num_internal_ids() as usize];
     let mut original_to_internal = vec![u32::MAX; n];
     let mut groups = Vec::<Vec<u32>>::new();
     let mut representatives = Vec::new();
     for (raw, &allowed) in domain.original_to_internal.iter().enumerate() {
-        if allowed == u32::MAX { continue; }
+        if allowed == u32::MAX {
+            continue;
+        }
         let class = quotient.original_to_internal[raw] as usize;
         let slot = remap.get_mut(class)?;
         if *slot == u32::MAX {

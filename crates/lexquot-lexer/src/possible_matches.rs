@@ -8,9 +8,9 @@ use rustc_hash::FxHashMap;
 use smallvec::SmallVec;
 
 use crate::automata::lexer::tokenizer::{Tokenizer, TokenizerStateSet};
-use crate::grammar::flat::TerminalID;
 use crate::ds::u8set::U8Set;
 use crate::ds::vocab_prefix_tree::VocabPrefixTreeNode;
+use crate::grammar::flat::TerminalID;
 
 type PossibleMatchMap = FxHashMap<TerminalID, RangeSetBlaze<u32>>;
 
@@ -80,7 +80,8 @@ impl<'a> PossibleMatchesComputer<'a> {
             Rc::clone(cached)
         } else {
             let reachable = Rc::new(reachable_u32(node));
-            self.reachable_cache.insert(cache_key, Rc::clone(&reachable));
+            self.reachable_cache
+                .insert(cache_key, Rc::clone(&reachable));
             reachable
         }
     }
@@ -208,9 +209,7 @@ impl<'a> PossibleMatchesComputer<'a> {
             let reachable = self.reachable_for_node(child);
 
             for &byte in segment_bytes {
-                current_states = if current_states.len() == 1
-                    && self.scalar_deterministic_scan
-                {
+                current_states = if current_states.len() == 1 && self.scalar_deterministic_scan {
                     match self.fast_step(current_states[0], byte) {
                         Some(next) => SmallVec::from_buf([next]),
                         None => TokenizerStateSet::new(),

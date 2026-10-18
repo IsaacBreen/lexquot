@@ -7,7 +7,6 @@
 //! enabled).  Future-terminal labels are read from the original DFA and never
 //! recomputed after restricting bytes.
 
-
 use crate::automata::lexer::Lexer;
 use crate::automata::lexer::tokenizer::Tokenizer;
 use rustc_hash::FxHashMap;
@@ -157,9 +156,16 @@ fn candidate_partition_by_source_observation(
     let mut raw_to_candidate = vec![NO_CANDIDATE; num_states];
     let mut candidates_by_key = FxHashMap::<(u32, u32, bool), usize>::default();
     for raw in 0..num_states {
-        let inherited = initial_state_map.map(|map| map.original_to_internal[raw]).unwrap_or(raw as u32);
-        if inherited == u32::MAX { continue; }
-        let has_any_transition = dfa.transitions_for(raw).iter().any(|&target| target != u32::MAX);
+        let inherited = initial_state_map
+            .map(|map| map.original_to_internal[raw])
+            .unwrap_or(raw as u32);
+        if inherited == u32::MAX {
+            continue;
+        }
+        let has_any_transition = dfa
+            .transitions_for(raw)
+            .iter()
+            .any(|&target| target != u32::MAX);
         let key = (inherited, target_labels[raw], has_any_transition);
         let candidate = if let Some(&candidate) = candidates_by_key.get(&key) {
             candidate
@@ -174,7 +180,9 @@ fn candidate_partition_by_source_observation(
         members[candidate].push(raw as u32);
     }
     for raw in 0..num_states {
-        if raw_to_candidate[raw] != NO_CANDIDATE { continue; }
+        if raw_to_candidate[raw] != NO_CANDIDATE {
+            continue;
+        }
         let candidate = members.len();
         raw_to_candidate[raw] = candidate;
         representatives.push(raw);
@@ -260,7 +268,10 @@ pub fn compute_state_map(
         let mut classes_by_source = FxHashMap::<(u32, bool), u32>::default();
         let mut classes = vec![0u32; num_candidates];
         for (candidate, &state) in candidate_representatives.iter().enumerate() {
-            let has_any_transition = dfa.transitions_for(state).iter().any(|&target| target != u32::MAX);
+            let has_any_transition = dfa
+                .transitions_for(state)
+                .iter()
+                .any(|&target| target != u32::MAX);
             let next = classes_by_source.len() as u32;
             classes[candidate] = *classes_by_source
                 .entry((target_labels[state], has_any_transition))
@@ -423,7 +434,10 @@ fn raw_target_label_ids(tokenizer: &Tokenizer, active_groups: &[bool]) -> RawObs
         active_language.push(key.len() > 1);
         let hash = hash_visible_observation_key(&key);
         let bucket = buckets.entry(hash).or_default();
-        if let Some((_, id)) = bucket.iter().find(|(representative, _)| representative == &key) {
+        if let Some((_, id)) = bucket
+            .iter()
+            .find(|(representative, _)| representative == &key)
+        {
             ids[state as usize] = *id;
         } else {
             bucket.push((key.clone(), next_id));
@@ -540,11 +554,7 @@ fn build_raw_relevant_edges(
 }
 
 #[inline]
-fn sparse_signature_hash(
-    state: usize,
-    current_classes: &[u32],
-    edges: &RawRelevantEdges,
-) -> u64 {
+fn sparse_signature_hash(state: usize, current_classes: &[u32], edges: &RawRelevantEdges) -> u64 {
     let mut hash = mix_observation_hash(0x1319_8a2e_0370_7344, current_classes[state] as u64);
     let start = edges.offsets[state] as usize;
     let end = edges.offsets[state + 1] as usize;
@@ -761,7 +771,11 @@ pub fn hopcroft_refine_sparse_edges(
 }
 
 fn map_from_raw_classes(classes: &[u32]) -> ManyToOneIdMap {
-    let class_count = classes.iter().copied().max().map_or(0usize, |id| id as usize + 1);
+    let class_count = classes
+        .iter()
+        .copied()
+        .max()
+        .map_or(0usize, |id| id as usize + 1);
     let mut internal_to_originals = vec![Vec::new(); class_count];
     let mut representative_original_ids = vec![u32::MAX; class_count];
     for (state, &class) in classes.iter().enumerate() {
@@ -898,10 +912,13 @@ pub fn compute_state_map_raw(
                 None => {
                     let class = next_class_count;
                     next_class_count += 1;
-                    buckets.insert(hash, ExactSignatureBucket::Single {
-                        representative: state,
-                        class,
-                    });
+                    buckets.insert(
+                        hash,
+                        ExactSignatureBucket::Single {
+                            representative: state,
+                            class,
+                        },
+                    );
                     class
                 }
                 Some(ExactSignatureBucket::Single {
@@ -967,8 +984,6 @@ pub fn compute_state_map_raw(
         current_class_count = next_class_count as usize;
     }
     None
-
-
 }
 
 #[cfg(test)]
@@ -976,10 +991,10 @@ mod tests {
     use std::sync::Arc;
 
     use super::*;
-    use crate::automata::lexer::ast::Expr;
-    use crate::automata::lexer::tokenizer::Tokenizer;
     use crate::automata::lexer::Lexer;
+    use crate::automata::lexer::ast::Expr;
     use crate::automata::lexer::compile::build_regex_monolithic as build_regex;
+    use crate::automata::lexer::tokenizer::Tokenizer;
 
     fn tokenizer(expressions: Vec<Expr>) -> Tokenizer {
         let terminal_count = expressions.len() as u32;
@@ -1011,8 +1026,16 @@ mod tests {
         assert_ne!(after_b, u32::MAX);
         assert_ne!(after_ac, u32::MAX);
         assert_ne!(after_bc, u32::MAX);
-        assert!(tokenizer.possible_future_terminals_iter(after_ac).any(|t| t == 0));
-        assert!(tokenizer.possible_future_terminals_iter(after_bc).any(|t| t == 1));
+        assert!(
+            tokenizer
+                .possible_future_terminals_iter(after_ac)
+                .any(|t| t == 0)
+        );
+        assert!(
+            tokenizer
+                .possible_future_terminals_iter(after_bc)
+                .any(|t| t == 1)
+        );
 
         let mut only_c = [false; 256];
         only_c[b'c' as usize] = true;

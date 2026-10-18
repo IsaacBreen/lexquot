@@ -11,11 +11,14 @@ pub struct CharTransitions<T> {
 impl<T> CharTransitions<T> {
     #[inline]
     fn entry_index(&self, key: u8) -> Result<usize, usize> {
-        self.entries.binary_search_by_key(&key, |(existing_key, _)| *existing_key)
+        self.entries
+            .binary_search_by_key(&key, |(existing_key, _)| *existing_key)
     }
 
     pub fn new() -> Self {
-        Self { entries: Vec::new() }
+        Self {
+            entries: Vec::new(),
+        }
     }
 
     pub fn from_sorted_entries(entries: Vec<(u8, T)>) -> Self {
@@ -126,7 +129,9 @@ impl<'a, T> Iterator for CharTransitionsIter<'a, T> {
 
 impl<T> ExactSizeIterator for CharTransitionsIter<'_, T> {
     #[inline]
-    fn len(&self) -> usize { self.inner.len() }
+    fn len(&self) -> usize {
+        self.inner.len()
+    }
 }
 
 impl<T> std::iter::FusedIterator for CharTransitionsIter<'_, T> {}
@@ -156,7 +161,9 @@ impl<'a, T> Iterator for CharTransitionsIterMut<'a, T> {
 
 impl<T> ExactSizeIterator for CharTransitionsIterMut<'_, T> {
     #[inline]
-    fn len(&self) -> usize { self.inner.len() }
+    fn len(&self) -> usize {
+        self.inner.len()
+    }
 }
 
 impl<T> std::iter::FusedIterator for CharTransitionsIterMut<'_, T> {}
@@ -187,7 +194,11 @@ impl<T> Extend<(u8, T)> for CharTransitions<T> {
         let iter = iter.into_iter();
         // There can be at most 256 distinct byte keys. Use a known input
         // length without reserving unbounded space for repeated replacements.
-        self.entries.reserve(iter.size_hint().0.min(256usize.saturating_sub(self.entries.len())));
+        self.entries.reserve(
+            iter.size_hint()
+                .0
+                .min(256usize.saturating_sub(self.entries.len())),
+        );
         for (key, value) in iter {
             self.insert(key, value);
         }
@@ -240,7 +251,8 @@ mod iterator_contract_tests {
 
     #[test]
     fn mutable_exact_lengths_preserve_updates_and_key_order() {
-        let mut transitions: CharTransitions<u32> = [(9, 90), (1, 10), (4, 40)].into_iter().collect();
+        let mut transitions: CharTransitions<u32> =
+            [(9, 90), (1, 10), (4, 40)].into_iter().collect();
         let mut iter = transitions.iter_mut();
         assert_eq!(iter.len(), 3);
         let (key, value) = iter.next().unwrap();
@@ -248,8 +260,13 @@ mod iterator_contract_tests {
         *value = 11;
         assert_eq!(iter.size_hint(), (2, Some(2)));
         assert_eq!(iter.count(), 2);
-        assert_eq!(transitions.iter().map(|(key, value)| (key, *value)).collect::<Vec<_>>(),
-                   vec![(1, 11), (4, 40), (9, 90)]);
+        assert_eq!(
+            transitions
+                .iter()
+                .map(|(key, value)| (key, *value))
+                .collect::<Vec<_>>(),
+            vec![(1, 11), (4, 40), (9, 90)]
+        );
         let mut iter = transitions.iter_mut();
         while iter.next().is_some() {}
         assert!(iter.next().is_none());
@@ -266,8 +283,13 @@ mod iterator_contract_tests {
                 let key = value.wrapping_mul(stride) as u8;
                 assert_eq!(transitions.insert(key, value), reference.insert(key, value));
             }
-            assert_eq!(transitions.iter().map(|(key, value)| (key, *value)).collect::<Vec<_>>(),
-                       reference.into_iter().collect::<Vec<_>>());
+            assert_eq!(
+                transitions
+                    .iter()
+                    .map(|(key, value)| (key, *value))
+                    .collect::<Vec<_>>(),
+                reference.into_iter().collect::<Vec<_>>()
+            );
             assert_eq!(transitions.len(), 256);
         }
     }

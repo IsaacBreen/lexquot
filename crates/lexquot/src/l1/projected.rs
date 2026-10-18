@@ -14,12 +14,12 @@ use std::time::Instant;
 use rayon::prelude::*;
 use rustc_hash::{FxHashMap, FxHasher};
 
+use super::support::{DEAD, Scanner};
 use super::{BuildInput, L1Relation, common};
-use crate::equiv_types::ManyToOneIdMap;
+use crate::Vocab;
 use crate::automata::lexer::tokenizer::{SingletonEpsilonClosures, TerminalResidualCoordinates};
 use crate::automata::lexer::{DFA, Lexer};
-use super::support::{DEAD, Scanner};
-use crate::Vocab;
+use crate::equiv_types::ManyToOneIdMap;
 
 const UNKNOWN: u32 = u32::MAX - 1;
 
@@ -125,19 +125,21 @@ impl<'a> Projected<'a> {
             root_closure_states: 0,
             root_memberships: 0,
             query_roots_are_continuation_exact: input.initial_state_map.is_none_or(|map| {
-                map.original_to_internal.iter().enumerate().all(|(raw, &class)| {
-                    class != u32::MAX
-                        && map.representative_original_ids.get(class as usize).copied()
-                            == Some(raw as u32)
-                })
+                map.original_to_internal
+                    .iter()
+                    .enumerate()
+                    .all(|(raw, &class)| {
+                        class != u32::MAX
+                            && map.representative_original_ids.get(class as usize).copied()
+                                == Some(raw as u32)
+                    })
             }),
             continuation_roots: FxHashMap::default(),
         }
     }
 
     fn state_active(&self, state: u32, group: u32) -> bool {
-        self.active_by_group[group as usize][state as usize / 64]
-            & (1u64 << (state as usize % 64))
+        self.active_by_group[group as usize][state as usize / 64] & (1u64 << (state as usize % 64))
             != 0
     }
 
@@ -245,14 +247,18 @@ impl<'a> Projected<'a> {
                     }
                     let row = &self.continuation_roots[&target];
                     row.binary_search_by_key(&group, |&(g, _)| g)
-                        .ok().map_or(DEAD, |index| row[index].1)
+                        .ok()
+                        .map_or(DEAD, |index| row[index].1)
                 }
             }
             ConfigStates::Many(config) => {
                 let config = Arc::clone(config);
                 self.intern(
                     group,
-                    self.input.tokenizer.step_all(config.as_ref(), byte).to_vec(),
+                    self.input
+                        .tokenizer
+                        .step_all(config.as_ref(), byte)
+                        .to_vec(),
                 )
             }
         }
@@ -382,7 +388,10 @@ impl SparseRoots {
             entries.extend(row);
             offsets.push(entries.len() as u32);
         }
-        Self { offsets: offsets.into_boxed_slice(), entries }
+        Self {
+            offsets: offsets.into_boxed_slice(),
+            entries,
+        }
     }
 
     #[inline]
@@ -403,7 +412,11 @@ impl SparseRoots {
         match row {
             [] => DEAD,
             [(only_group, state)] => {
-                if *only_group == group { *state } else { DEAD }
+                if *only_group == group {
+                    *state
+                } else {
+                    DEAD
+                }
             }
             _ => row
                 .binary_search_by_key(&group, |&(candidate, _)| candidate)
@@ -504,7 +517,10 @@ fn build_direct_terminal_residual_machine_with_coordinates<'a>(
         }
         let locals = locals.into_iter().map(Option::unwrap).collect::<Vec<_>>();
         local_total_work_ms = locals.iter().map(|local| local.elapsed_ms).sum();
-        local_max_ms = locals.iter().map(|local| local.elapsed_ms).fold(0.0f64, f64::max);
+        local_max_ms = locals
+            .iter()
+            .map(|local| local.elapsed_ms)
+            .fold(0.0f64, f64::max);
         if profile
             && let Some((index, slowest)) = locals
                 .iter()
@@ -599,7 +615,12 @@ fn build_direct_terminal_residual_machine_with_coordinates<'a>(
         for &closure_state in closure.iter() {
             for &(terminal, residual_state) in coordinates.row(closure_state)? {
                 let terminal = terminal as usize;
-                if !input.active_terminals.get(terminal).copied().unwrap_or(false) {
+                if !input
+                    .active_terminals
+                    .get(terminal)
+                    .copied()
+                    .unwrap_or(false)
+                {
                     continue;
                 }
                 let group = *group_for_terminal.get(terminal)?;
@@ -611,7 +632,8 @@ fn build_direct_terminal_residual_machine_with_coordinates<'a>(
                 if projected == DEAD {
                     continue;
                 }
-                if let Some(existing) = row.iter().find(|(candidate, _)| *candidate == group as u32) {
+                if let Some(existing) = row.iter().find(|(candidate, _)| *candidate == group as u32)
+                {
                     // A deterministic terminal residual coordinate must not map
                     // one epsilon-closed raw state to two distinct residuals of
                     // the same terminal. Fail closed to the established path.
@@ -690,10 +712,7 @@ fn minimize(transitions: &[Vec<(u8, u32)>], alphabet: &[u8]) -> Minimized {
     minimize_seeded(transitions, alphabet, None)
 }
 
-fn minimize_direct_residual_union(
-    transitions: &[Vec<(u8, u32)>],
-    alphabet: &[u8],
-) -> Minimized {
+fn minimize_direct_residual_union(transitions: &[Vec<(u8, u32)>], alphabet: &[u8]) -> Minimized {
     let profile = std::env::var_os("LEXQUOT_PROFILE_L1_IMPLEMENTATIONS").is_some();
     let seed_started = profile.then(Instant::now);
     const ROUNDS: usize = 2;
@@ -709,8 +728,7 @@ fn minimize_direct_residual_union(
     // larger unions retain parallel hashing. The work metric counts exactly
     // the states and live edges visited by each round.
     const SEQUENTIAL_SEED_WORK_LIMIT: usize = 64;
-    let transition_work = transitions.len()
-        + transitions.iter().map(Vec::len).sum::<usize>();
+    let transition_work = transitions.len() + transitions.iter().map(Vec::len).sum::<usize>();
     for _ in 0..ROUNDS {
         let hash_row = |row: &Vec<(u8, u32)>| {
             let mut hash = 0x243f_6a88_85a3_08d3u64 ^ row.len() as u64;
@@ -791,7 +809,11 @@ fn minimize_seeded(
     let blocks_started = profile.then(Instant::now);
     let mut class = initial_classes.map_or_else(|| vec![0u32; live], <[u32]>::to_vec);
     debug_assert_eq!(class.len(), live);
-    let block_count = class.iter().copied().max().map_or(0usize, |value| value as usize + 1);
+    let block_count = class
+        .iter()
+        .copied()
+        .max()
+        .map_or(0usize, |value| value as usize + 1);
     let mut blocks = vec![Vec::<u32>::new(); block_count.max(usize::from(live != 0))];
     if initial_classes.is_none() && live != 0 {
         blocks[0].reserve(live);
@@ -829,7 +851,8 @@ fn minimize_seeded(
         let end = incoming_offsets[target + 1] as usize;
         incoming[start..end].sort_unstable();
     }
-    let reverse_ms = reverse_started.map_or(0.0, |started| started.elapsed().as_secs_f64() * 1000.0);
+    let reverse_ms =
+        reverse_started.map_or(0.0, |started| started.elapsed().as_secs_f64() * 1000.0);
 
     // Hopcroft over all residual roots. With no seed, one live block is
     // sufficient because the implicit rejecting sink's predecessor set is the
@@ -1098,7 +1121,8 @@ fn minimize_seeded_symbol_target_csr(
     drop(next);
     drop(target_symbol_counts);
     let target_symbol_bits = (symbols == 256).then_some(target_symbol_bits);
-    let reverse_ms = reverse_started.map_or(0.0, |started| started.elapsed().as_secs_f64() * 1000.0);
+    let reverse_ms =
+        reverse_started.map_or(0.0, |started| started.elapsed().as_secs_f64() * 1000.0);
 
     // There can be at most `live` blocks. Keep their per-symbol incoming counts
     // contiguous so splits append one zeroed row instead of allocating and
@@ -1150,7 +1174,9 @@ fn minimize_seeded_symbol_target_csr(
             } else {
                 let word = symbol / 64;
                 let bit = 1u64 << (symbol % 64);
-                if target_symbol_bits.as_ref().expect("full alphabet presence bits")
+                if target_symbol_bits
+                    .as_ref()
+                    .expect("full alphabet presence bits")
                     [target as usize * target_symbol_words + word]
                     & bit
                     == 0
@@ -1417,7 +1443,6 @@ fn minimize_dag_with_self_loops(
     Some((class, representatives))
 }
 
-
 /// Exact congruence reduction for a deterministic component by its SCC DAG.
 /// Most projected terminal residuals are a large DAG feeding a tiny cyclic core.
 /// Singleton SCCs are structurally hashed bottom-up. Nontrivial SCCs are refined
@@ -1528,7 +1553,8 @@ fn minimize_scc_dag(transitions: &FlatLocalTransitions) -> (Vec<u32>, Vec<u32>, 
         components.push(members);
     }
 
-    let decompose_ms = phase_started.map_or(0.0, |started| started.elapsed().as_secs_f64() * 1000.0);
+    let decompose_ms =
+        phase_started.map_or(0.0, |started| started.elapsed().as_secs_f64() * 1000.0);
     let condensation_started = profiling.then(Instant::now);
 
     // Process sink SCCs first so every edge leaving the current SCC already has
@@ -1561,9 +1587,8 @@ fn minimize_scc_dag(transitions: &FlatLocalTransitions) -> (Vec<u32>, Vec<u32>, 
         }
     }
 
-    let condensation_ms = condensation_started.map_or(0.0, |started| {
-        started.elapsed().as_secs_f64() * 1000.0
-    });
+    let condensation_ms =
+        condensation_started.map_or(0.0, |started| started.elapsed().as_secs_f64() * 1000.0);
     let solve_started = profiling.then(Instant::now);
     let mut candidate_tests = 0usize;
     let mut candidate_states = 0usize;
@@ -1579,8 +1604,7 @@ fn minimize_scc_dag(transitions: &FlatLocalTransitions) -> (Vec<u32>, Vec<u32>, 
     // fixed-point test only scans a tiny exact candidate set.
     let mut class_rows = Vec::<Vec<(u8, u32)>>::new();
     let mut row_ids = FxHashMap::<Vec<(u8, u32)>, u32>::default();
-    let mut self_classes_by_shape =
-        FxHashMap::<(u8, [u64; 4]), Vec<u32>>::default();
+    let mut self_classes_by_shape = FxHashMap::<(u8, [u64; 4]), Vec<u32>>::default();
     let mut cyclic_components = 0usize;
     let mut cyclic_states = 0usize;
     let mut processed_components = 0usize;
@@ -1780,7 +1804,8 @@ fn minimize_scc_dag(transitions: &FlatLocalTransitions) -> (Vec<u32>, Vec<u32>, 
     debug_assert!(class.iter().all(|&value| value != u32::MAX));
     debug_assert_eq!(class_rows.len(), representatives.len());
     if profiling {
-        let solve_ms = solve_started.map_or(0.0, |started| started.elapsed().as_secs_f64() * 1000.0);
+        let solve_ms =
+            solve_started.map_or(0.0, |started| started.elapsed().as_secs_f64() * 1000.0);
         eprintln!(
             "[glrmask/profile][l1_projected_scc_reduce] states={} edges={} classes={} sccs={} cyclic_sccs={} cyclic_states={} decompose_ms={:.3} condensation_ms={:.3} solve_ms={:.3} candidate_states={} candidate_tests={} candidate_matches={} max_candidate_bucket={}",
             n,
@@ -1944,8 +1969,7 @@ fn minimize_grouped_local(
         for &global in states {
             local_of_global[global as usize] = u32::MAX;
         }
-        local_max_group_ms =
-            local_max_group_ms.max(group_started.elapsed().as_secs_f64() * 1000.0);
+        local_max_group_ms = local_max_group_ms.max(group_started.elapsed().as_secs_f64() * 1000.0);
     }
     let local_ms = local_started.elapsed().as_secs_f64() * 1000.0;
 
@@ -2287,41 +2311,41 @@ impl<'a> ReverseSubsets<'a> {
             }
         }
         let build_column = |column: &Box<[u32]>| {
-                let mut counts = vec![0u32; state_count];
-                let mut live_sources = vec![0u64; words];
-                let mut live_targets = vec![0u64; words];
-                for (source, &target) in column.iter().enumerate() {
-                    if target != DEAD {
-                        counts[target as usize] += 1;
-                        live_sources[source / 64] |= 1u64 << (source % 64);
-                        live_targets[target as usize / 64] |= 1u64 << (target as usize % 64);
-                    }
+            let mut counts = vec![0u32; state_count];
+            let mut live_sources = vec![0u64; words];
+            let mut live_targets = vec![0u64; words];
+            for (source, &target) in column.iter().enumerate() {
+                if target != DEAD {
+                    counts[target as usize] += 1;
+                    live_sources[source / 64] |= 1u64 << (source % 64);
+                    live_targets[target as usize / 64] |= 1u64 << (target as usize % 64);
                 }
-                let live_target_count = live_targets
-                    .iter()
-                    .map(|word| word.count_ones() as usize)
-                    .sum();
-                let mut offsets = vec![0u32; state_count + 1];
-                for target in 0..state_count {
-                    offsets[target + 1] = offsets[target] + counts[target];
+            }
+            let live_target_count = live_targets
+                .iter()
+                .map(|word| word.count_ones() as usize)
+                .sum();
+            let mut offsets = vec![0u32; state_count + 1];
+            for target in 0..state_count {
+                offsets[target + 1] = offsets[target] + counts[target];
+            }
+            let mut next = offsets[..state_count].to_vec();
+            let mut sources = vec![0u32; offsets[state_count] as usize];
+            for (source, &target) in column.iter().enumerate() {
+                if target != DEAD {
+                    let slot = &mut next[target as usize];
+                    sources[*slot as usize] = source as u32;
+                    *slot += 1;
                 }
-                let mut next = offsets[..state_count].to_vec();
-                let mut sources = vec![0u32; offsets[state_count] as usize];
-                for (source, &target) in column.iter().enumerate() {
-                    if target != DEAD {
-                        let slot = &mut next[target as usize];
-                        sources[*slot as usize] = source as u32;
-                        *slot += 1;
-                    }
-                }
-                ReverseColumn {
-                    offsets: offsets.into_boxed_slice(),
-                    sources: sources.into_boxed_slice(),
-                    live_sources: live_sources.into_boxed_slice(),
-                    live_targets: live_targets.into_boxed_slice(),
-                    live_target_count,
-                }
-            };
+            }
+            ReverseColumn {
+                offsets: offsets.into_boxed_slice(),
+                sources: sources.into_boxed_slice(),
+                live_sources: live_sources.into_boxed_slice(),
+                live_targets: live_targets.into_boxed_slice(),
+                live_target_count,
+            }
+        };
         let reverse_columns: Vec<ReverseColumn> = columns.iter().map(build_column).collect();
         let symbol_count = reverse_columns.len();
         let mut result = Self {
@@ -2387,7 +2411,12 @@ impl<'a> ReverseSubsets<'a> {
         set[state as usize / 64] & (1u64 << (state as usize % 64)) != 0
     }
 
-    fn visit_targets(set: &[u64], state_count: usize, included: bool, mut visit: impl FnMut(usize)) {
+    fn visit_targets(
+        set: &[u64],
+        state_count: usize,
+        included: bool,
+        mut visit: impl FnMut(usize),
+    ) {
         for (word_index, &set_word) in set.iter().enumerate() {
             let mut word = if included { set_word } else { !set_word };
             if word_index + 1 == set.len() && !state_count.is_multiple_of(64) {
@@ -2578,12 +2607,8 @@ fn projected_shape(input: BuildInput<'_>) -> (usize, usize) {
     let vocab_bytes = relevant.iter().filter(|&&used| used).count();
     let memberships = (0..input.tokenizer.num_states())
         .map(|state| {
-            super::collect_active_terminal_signature(
-                input.tokenizer,
-                state,
-                input.active_terminals,
-            )
-            .len()
+            super::collect_active_terminal_signature(input.tokenizer, state, input.active_terminals)
+                .len()
         })
         .sum();
     (memberships, vocab_bytes)
@@ -2665,7 +2690,6 @@ fn projected_kernel(input: BuildInput<'_>) -> ProjectedKernel {
     projected_kernel_auto(input)
 }
 
-
 fn profile_vector_projection_shape(input: BuildInput<'_>) {
     let Ok(scope) = std::env::var("LEXQUOT_L1_PROJECTED_VECTOR_PROFILE") else {
         return;
@@ -2680,7 +2704,12 @@ fn profile_vector_projection_shape(input: BuildInput<'_>) {
     for raw in 0..input.tokenizer.num_states() {
         raw_roots.push(scanner.start(raw));
     }
-    let mut vocab_bytes = input.vocab.relevant_bytes().iter().copied().collect::<Vec<_>>();
+    let mut vocab_bytes = input
+        .vocab
+        .relevant_bytes()
+        .iter()
+        .copied()
+        .collect::<Vec<_>>();
     vocab_bytes.sort_unstable();
     let (bytes, _) = quotient_input_bytes(input, &vocab_bytes);
     let mut transitions = Vec::<Vec<(u8, u32)>>::new();
@@ -2734,7 +2763,11 @@ fn projected_kernel_auto(input: BuildInput<'_>) -> ProjectedKernel {
     if input.partition_label == "p1" && input.subset_parent_order.is_none() {
         return ProjectedKernel::Residual;
     }
-    let active_terminals = input.active_terminals.iter().filter(|&&active| active).count();
+    let active_terminals = input
+        .active_terminals
+        .iter()
+        .filter(|&&active| active)
+        .count();
     let vocab_tokens = input.vocab.len();
     let vocab_bytes = input.vocab.relevant_bytes().len();
 
@@ -2774,7 +2807,11 @@ pub fn build(input: BuildInput<'_>) -> Option<L1Relation> {
         eprintln!(
             "[glrmask/profile][l1_projected_plan] partition={} active_terminals={} vocab_tokens={} vocab_bytes={} kernel={:?}",
             input.partition_label,
-            input.active_terminals.iter().filter(|&&active| active).count(),
+            input
+                .active_terminals
+                .iter()
+                .filter(|&&active| active)
+                .count(),
             input.vocab.len(),
             input.vocab.relevant_bytes().len(),
             kernel,
@@ -2785,7 +2822,6 @@ pub fn build(input: BuildInput<'_>) -> Option<L1Relation> {
         ProjectedKernel::Residual => build_binary(input),
     }
 }
-
 
 #[derive(Default)]
 struct FiniteTrieNode {
@@ -2844,16 +2880,13 @@ fn collect_vocab_bytes(tokens: &[Arc<[u8]>]) -> Box<[u8]> {
         .into_boxed_slice()
 }
 
-
 fn small_prepared_vocab_enabled(input: BuildInput<'_>) -> bool {
-    let max_tokenizer_states = std::env::var(
-        "LEXQUOT_L1_SMALL_PREPARED_VOCAB_MAX_TOKENIZER_STATES",
-    )
-    .ok()
-    .and_then(|value| value.parse::<u32>().ok())
-    .unwrap_or(4_000);
-    input.subset_parent_order.is_none()
-        && input.tokenizer.num_states() <= max_tokenizer_states
+    let max_tokenizer_states =
+        std::env::var("LEXQUOT_L1_SMALL_PREPARED_VOCAB_MAX_TOKENIZER_STATES")
+            .ok()
+            .and_then(|value| value.parse::<u32>().ok())
+            .unwrap_or(4_000);
+    input.subset_parent_order.is_none() && input.tokenizer.num_states() <= max_tokenizer_states
 }
 
 fn preordered_vocab_map_enabled(input: BuildInput<'_>) -> bool {
@@ -3014,8 +3047,8 @@ fn build_finite_vocab_projection(vocab: &Vocab) -> Arc<FiniteVocabProjection> {
     original_order.sort_unstable_by_key(|&(original, _)| original);
     let vocab_bytes = collect_vocab_bytes(&tokens);
     let trie = FiniteTrie::build(&tokens);
-    let reverse_trie =
-        (tokens.len() >= reverse_vocab_trie_min_tokens()).then(|| build_reverse_vocab_trie(&tokens));
+    let reverse_trie = (tokens.len() >= reverse_vocab_trie_min_tokens())
+        .then(|| build_reverse_vocab_trie(&tokens));
     let projection = Arc::new(FiniteVocabProjection {
         aliases,
         original_order: Some(original_order.into_boxed_slice()),
@@ -3051,17 +3084,13 @@ fn finite_vocab_projection(input: BuildInput<'_>) -> (Arc<FiniteVocabProjection>
             return (cached, true, started.elapsed().as_secs_f64() * 1000.0);
         }
         let projection = build_finite_vocab_projection(input.vocab);
-        return (
-            projection,
-            false,
-            started.elapsed().as_secs_f64() * 1000.0,
-        );
+        return (projection, false, started.elapsed().as_secs_f64() * 1000.0);
     }
     let (aliases, tokens) = unique_vocab(input);
     let vocab_bytes = collect_vocab_bytes(&tokens);
     let trie = FiniteTrie::build(&tokens);
-    let reverse_trie =
-        (tokens.len() >= reverse_vocab_trie_min_tokens()).then(|| build_reverse_vocab_trie(&tokens));
+    let reverse_trie = (tokens.len() >= reverse_vocab_trie_min_tokens())
+        .then(|| build_reverse_vocab_trie(&tokens));
     (
         Arc::new(FiniteVocabProjection {
             aliases,
@@ -3133,7 +3162,10 @@ impl FiniteTrie {
                 for &byte in edge {
                     subtree_bytes[byte as usize >> 6] |= 1u64 << (byte & 63);
                 }
-                for (dst, &src) in subtree_bytes.iter_mut().zip(child_node.subtree_bytes.iter()) {
+                for (dst, &src) in subtree_bytes
+                    .iter_mut()
+                    .zip(child_node.subtree_bytes.iter())
+                {
                     *dst |= src;
                 }
             }
@@ -3142,7 +3174,9 @@ impl FiniteTrie {
         }
 
         if tokens.is_empty() {
-            return Self { nodes: vec![FiniteTrieNode::default()] };
+            return Self {
+                nodes: vec![FiniteTrieNode::default()],
+            };
         }
         let mut nodes = Vec::new();
         let root = add_range(tokens, 0, tokens.len(), 0, &mut nodes);
@@ -3175,8 +3209,6 @@ impl FiniteTrie {
     }
 }
 
-
-
 struct FrozenFiniteScanner {
     width: usize,
     transitions: Box<[u32]>,
@@ -3187,7 +3219,12 @@ struct FrozenFiniteScanner {
 
 impl FrozenFiniteScanner {
     fn build(scanner: &mut Scanner<'_>, input: BuildInput<'_>) -> Self {
-        let mut vocab_bytes = input.vocab.relevant_bytes().iter().copied().collect::<Vec<_>>();
+        let mut vocab_bytes = input
+            .vocab
+            .relevant_bytes()
+            .iter()
+            .copied()
+            .collect::<Vec<_>>();
         vocab_bytes.sort_unstable();
         let (representatives, byte_representative) = quotient_input_bytes(input, &vocab_bytes);
         let width = representatives.len();
@@ -3197,7 +3234,8 @@ impl FrozenFiniteScanner {
         }
         let mut byte_slot = [u16::MAX; 256];
         for &byte in &vocab_bytes {
-            byte_slot[byte as usize] = representative_slot[byte_representative[byte as usize] as usize];
+            byte_slot[byte as usize] =
+                representative_slot[byte_representative[byte as usize] as usize];
         }
 
         let mut transitions = Vec::<u32>::new();
@@ -3256,7 +3294,11 @@ impl FrozenFiniteScanner {
 
     #[inline]
     fn signature(&self, state: u32) -> u32 {
-        if state == DEAD { 0 } else { self.signatures[state as usize] }
+        if state == DEAD {
+            0
+        } else {
+            self.signatures[state as usize]
+        }
     }
 }
 
@@ -3327,7 +3369,11 @@ fn push_profile_run(out: &mut Vec<ProfileRun>, start: u32, end: u32, signature: 
         last.end = end;
         return;
     }
-    out.push(ProfileRun { start, end, signature });
+    out.push(ProfileRun {
+        start,
+        end,
+        signature,
+    });
 }
 
 fn collect_finite_profile(
@@ -3354,12 +3400,7 @@ fn collect_finite_profile(
         let covered = crate::ds::u8set::U8Set::from_words(current.subtree_bytes).is_subset(&loops);
         if covered {
             let signature = scanner.signature(config);
-            push_profile_run(
-                out,
-                current.subtree_start,
-                current.subtree_end,
-                signature,
-            );
+            push_profile_run(out, current.subtree_start, current.subtree_end, signature);
             *uniform_subtrees += 1;
             *uniform_tokens += (current.subtree_end - current.subtree_start) as usize;
             return out.len() <= max_profile_runs;
@@ -3376,8 +3417,18 @@ fn collect_finite_profile(
         let target = scanner.step_bytes(config, trie.edge(child, tokens));
         if target != DEAD {
             if !collect_finite_profile(
-                scanner, trie, tokens, self_loops, child, target, out, pair_visits,
-                uniform_subtrees, uniform_tokens, max_profile_runs, max_pair_visits,
+                scanner,
+                trie,
+                tokens,
+                self_loops,
+                child,
+                target,
+                out,
+                pair_visits,
+                uniform_subtrees,
+                uniform_tokens,
+                max_profile_runs,
+                max_pair_visits,
             ) {
                 return false;
             }
@@ -3597,19 +3648,21 @@ fn finite_compact_runs(
         }
         let mut offsets = vec![0usize; token_count + 2];
         for position in 0..=token_count {
-            offsets[position + 1] = offsets[position]
-                + end_counts[position]
-                + start_counts[position];
+            offsets[position + 1] =
+                offsets[position] + end_counts[position] + start_counts[position];
         }
         let mut end_cursor = offsets[..=token_count].to_vec();
         let mut start_cursor = (0..=token_count)
             .map(|position| offsets[position] + end_counts[position])
             .collect::<Vec<_>>();
-        let mut ordered = vec![FiniteRowEvent {
-            position: 0,
-            row: 0,
-            signature: 0,
-        }; events.len()];
+        let mut ordered = vec![
+            FiniteRowEvent {
+                position: 0,
+                row: 0,
+                signature: 0,
+            };
+            events.len()
+        ];
         for event in events.drain(..) {
             let position = event.position as usize;
             let cursor = if event.signature == 0 {
@@ -3712,9 +3765,8 @@ fn finite_compact_runs(
     }
 
     // Legacy diagnostic path retains its comparison sort.
-    events.sort_unstable_by_key(|event| {
-        (event.position, event.row, u8::from(event.signature != 0))
-    });
+    events
+        .sort_unstable_by_key(|event| (event.position, event.row, u8::from(event.signature != 0)));
     let mut vector = CanonicalSignatureVector::new(class_fingerprints.len());
     let mut class_by_root = FxHashMap::<u32, u32>::default();
     let mut token_class = vec![0u32; token_count];
@@ -3773,7 +3825,13 @@ fn finite_compact_runs(
             compact_rows.push(compact);
         }
     }
-    (token_class, token_reps, compact_rows, events.len(), referenced_runs)
+    (
+        token_class,
+        token_reps,
+        compact_rows,
+        events.len(),
+        referenced_runs,
+    )
 }
 
 /// Exact finite-vocabulary L1 projection.
@@ -3976,15 +4034,24 @@ fn build_finite_projected_impl(
             .collect::<Vec<_>>();
 
         if std::env::var_os("LEXQUOT_PROFILE_L1_IMPLEMENTATIONS").is_some() {
-            let mut visit_counts = results.iter().map(|(_, visits, _, _)| *visits).collect::<Vec<_>>();
+            let mut visit_counts = results
+                .iter()
+                .map(|(_, visits, _, _)| *visits)
+                .collect::<Vec<_>>();
             visit_counts.sort_unstable();
             let quantile = |num: usize, den: usize| -> usize {
-                if visit_counts.is_empty() { return 0; }
+                if visit_counts.is_empty() {
+                    return 0;
+                }
                 visit_counts[(visit_counts.len() - 1) * num / den]
             };
             let max = visit_counts.last().copied().unwrap_or(0);
             let total = visit_counts.iter().sum::<usize>();
-            let top_1pct = visit_counts.iter().rev().take((visit_counts.len() / 100).max(1)).sum::<usize>();
+            let top_1pct = visit_counts
+                .iter()
+                .rev()
+                .take((visit_counts.len() / 100).max(1))
+                .sum::<usize>();
             eprintln!(
                 "[glrmask/profile][l1_finite_parallel_job_weights] partition={} jobs={} total_visits={} p50={} p90={} p99={} max={} top1pct_visits={} top1pct_pct={:.2}",
                 input.partition_label,
@@ -3999,8 +4066,7 @@ fn build_finite_projected_impl(
             );
         }
         let mut key_profile = vec![0u32; keys.len()];
-        for (key, (values, visits, uniform, uniform_token_count)) in
-            results.into_iter().enumerate()
+        for (key, (values, visits, uniform, uniform_token_count)) in results.into_iter().enumerate()
         {
             pair_visits += visits;
             uniform_subtrees += uniform;
@@ -4088,8 +4154,11 @@ fn build_finite_projected_impl(
                         if std::env::var_os("LEXQUOT_PROFILE_L1_IMPLEMENTATIONS").is_some() {
                             eprintln!(
                                 "[glrmask/profile][l1_finite_budget_abort] partition={} profile_runs={} pair_visits={} max_profile_runs={} max_pair_visits={} action=residual",
-                                input.partition_label, profile_run_count + values.len(), pair_visits,
-                                profile_run_budget, pair_visit_budget,
+                                input.partition_label,
+                                profile_run_count + values.len(),
+                                pair_visits,
+                                profile_run_budget,
+                                pair_visit_budget,
                             );
                         }
                         return build_binary_without_finite_switch(input);
@@ -4134,14 +4203,13 @@ fn build_finite_projected_impl(
     let use_run_sweep = std::env::var_os("LEXQUOT_DISABLE_L1_FINITE_RUN_SWEEP").is_none();
     let (finished, run_sweep_events, referenced_runs) = if use_run_sweep {
         let compact_started = Instant::now();
-        let (token_class, _token_reps, compact_rows, events, referenced_runs) =
-            finite_compact_runs(
-                root_token,
-                &class_fingerprints,
-                &profiles,
-                aliases.len(),
-                true,
-            );
+        let (token_class, _token_reps, compact_rows, events, referenced_runs) = finite_compact_runs(
+            root_token,
+            &class_fingerprints,
+            &profiles,
+            aliases.len(),
+            true,
+        );
         let compact_ms = compact_started.elapsed().as_secs_f64() * 1000.0;
         let preordered_vocab = preordered_vocab_map_enabled(input)
             .then(|| finite_vocab.original_order.as_deref())
@@ -4266,9 +4334,7 @@ fn projected_root_membership_precheck(input: BuildInput<'_>, threshold: usize) -
 }
 
 fn residual_finite_switch_states(input: BuildInput<'_>) -> usize {
-    if input.subset_parent_order.is_some()
-        || input.partition_label == "single_terminal_global"
-    {
+    if input.subset_parent_order.is_some() || input.partition_label == "single_terminal_global" {
         // The global one-terminal path has exactly one terminal signature. Its
         // residual projection stays compact even when the underlying tokenizer
         // has many states, while finite projection expands the full
@@ -4378,21 +4444,25 @@ fn build_binary_impl(input: BuildInput<'_>, allow_finite_switch: bool) -> Option
         return None;
     }
     let total = Instant::now();
-    let finite_switch_states = if allow_finite_switch { residual_finite_switch_states(input) } else { usize::MAX };
+    let finite_switch_states = if allow_finite_switch {
+        residual_finite_switch_states(input)
+    } else {
+        usize::MAX
+    };
     let setup_started = Instant::now();
-    let use_finite_precheck = allow_finite_switch && std::env::var("LEXQUOT_L1_RESIDUAL_FINITE_PRECHECK")
-        .map(|value| {
-            let value = value.trim();
-            value.is_empty() || value == "1" || value.eq_ignore_ascii_case("true")
-        })
-        .unwrap_or(true);
+    let use_finite_precheck = allow_finite_switch
+        && std::env::var("LEXQUOT_L1_RESIDUAL_FINITE_PRECHECK")
+            .map(|value| {
+                let value = value.trim();
+                value.is_empty() || value == "1" || value.eq_ignore_ascii_case("true")
+            })
+            .unwrap_or(true);
     if use_finite_precheck && finite_switch_states != usize::MAX {
-        let p2_unbounded_max_tokenizer_states = std::env::var(
-            "LEXQUOT_P2_RESIDUAL_FINITE_UNBOUNDED_MAX_TOKENIZER_STATES",
-        )
-        .ok()
-        .and_then(|value| value.parse::<u32>().ok())
-        .unwrap_or(50_000);
+        let p2_unbounded_max_tokenizer_states =
+            std::env::var("LEXQUOT_P2_RESIDUAL_FINITE_UNBOUNDED_MAX_TOKENIZER_STATES")
+                .ok()
+                .and_then(|value| value.parse::<u32>().ok())
+                .unwrap_or(50_000);
         // The unbounded finite p2 handoff is a win for the compact Kubernetes
         // p99 topology, where a few thousand tokenizer states fan out into a
         // huge residual-root set.  Very large tokenizer machines are the
@@ -4412,44 +4482,44 @@ fn build_binary_impl(input: BuildInput<'_>, allow_finite_switch: bool) -> Option
                 );
             }
         } else {
-        let unbounded_p2_memberships = (input.partition_label == "p2").then(|| {
-            std::env::var("LEXQUOT_P2_RESIDUAL_FINITE_UNBOUNDED_MEMBERSHIPS")
-                .ok()
-                .and_then(|value| value.parse::<usize>().ok())
-                .unwrap_or(50_000)
-        });
-        // For p2, probe far enough to distinguish a merely-large residual
-        // (which should keep the existing bounded finite attempt) from the
-        // pathological 100k+ root regime where falling back to residual is
-        // much more expensive than letting finite projection complete.
-        let probe_threshold = unbounded_p2_memberships
-            .map(|threshold| threshold.max(finite_switch_states))
-            .unwrap_or(finite_switch_states);
-        let precheck_started = Instant::now();
-        let (memberships, exceeds_probe_threshold) =
-            projected_root_membership_precheck(input, probe_threshold);
-        let exceeds_threshold = exceeds_probe_threshold || memberships > finite_switch_states;
-        let exceeds_unbounded_p2 = unbounded_p2_memberships
-            .is_some_and(|threshold| exceeds_probe_threshold || memberships > threshold);
-        let precheck_ms = precheck_started.elapsed().as_secs_f64() * 1000.0;
-        if std::env::var_os("LEXQUOT_PROFILE_L1_IMPLEMENTATIONS").is_some() {
-            eprintln!(
-                "[glrmask/profile][l1_residual_finite_precheck] partition={} memberships={} threshold={} probe_threshold={} selected={} unbounded={} precheck_ms={:.3}",
-                input.partition_label,
-                memberships,
-                finite_switch_states,
-                probe_threshold,
-                exceeds_threshold,
-                exceeds_unbounded_p2,
-                precheck_ms,
-            );
-        }
-        if exceeds_threshold {
-            if exceeds_unbounded_p2 {
-                return build_finite_projected_unbounded(input);
+            let unbounded_p2_memberships = (input.partition_label == "p2").then(|| {
+                std::env::var("LEXQUOT_P2_RESIDUAL_FINITE_UNBOUNDED_MEMBERSHIPS")
+                    .ok()
+                    .and_then(|value| value.parse::<usize>().ok())
+                    .unwrap_or(50_000)
+            });
+            // For p2, probe far enough to distinguish a merely-large residual
+            // (which should keep the existing bounded finite attempt) from the
+            // pathological 100k+ root regime where falling back to residual is
+            // much more expensive than letting finite projection complete.
+            let probe_threshold = unbounded_p2_memberships
+                .map(|threshold| threshold.max(finite_switch_states))
+                .unwrap_or(finite_switch_states);
+            let precheck_started = Instant::now();
+            let (memberships, exceeds_probe_threshold) =
+                projected_root_membership_precheck(input, probe_threshold);
+            let exceeds_threshold = exceeds_probe_threshold || memberships > finite_switch_states;
+            let exceeds_unbounded_p2 = unbounded_p2_memberships
+                .is_some_and(|threshold| exceeds_probe_threshold || memberships > threshold);
+            let precheck_ms = precheck_started.elapsed().as_secs_f64() * 1000.0;
+            if std::env::var_os("LEXQUOT_PROFILE_L1_IMPLEMENTATIONS").is_some() {
+                eprintln!(
+                    "[glrmask/profile][l1_residual_finite_precheck] partition={} memberships={} threshold={} probe_threshold={} selected={} unbounded={} precheck_ms={:.3}",
+                    input.partition_label,
+                    memberships,
+                    finite_switch_states,
+                    probe_threshold,
+                    exceeds_threshold,
+                    exceeds_unbounded_p2,
+                    precheck_ms,
+                );
             }
-            return build_finite_projected(input);
-        }
+            if exceeds_threshold {
+                if exceeds_unbounded_p2 {
+                    return build_finite_projected_unbounded(input);
+                }
+                return build_finite_projected(input);
+            }
         }
     }
     // Full-partition vocabularies at or above the finite-preparation threshold
@@ -4471,18 +4541,24 @@ fn build_binary_impl(input: BuildInput<'_>, allow_finite_switch: bool) -> Option
         .then(|| build_finite_vocab_projection(input.vocab));
     let vocab_projection_ms = vocab_projection_started.elapsed().as_secs_f64() * 1000.0;
     let owned_vocab;
-    let (aliases, tokens): (&[Vec<u32>], &[Arc<[u8]>]) = if let Some(prepared) = prepared_vocab.as_ref() {
-        (prepared.aliases.as_slice(), prepared.tokens.as_slice())
-    } else {
-        owned_vocab = unique_vocab(input);
-        (owned_vocab.0.as_slice(), owned_vocab.1.as_slice())
-    };
+    let (aliases, tokens): (&[Vec<u32>], &[Arc<[u8]>]) =
+        if let Some(prepared) = prepared_vocab.as_ref() {
+            (prepared.aliases.as_slice(), prepared.tokens.as_slice())
+        } else {
+            owned_vocab = unique_vocab(input);
+            (owned_vocab.0.as_slice(), owned_vocab.1.as_slice())
+        };
     if tokens.iter().all(|token| token.len() == 1) {
         return build_one_byte(input, aliases, tokens, total);
     }
     let byte_setup_started = Instant::now();
     let vocab_bytes = if prepared_vocab.is_some() {
-        let mut bytes = input.vocab.relevant_bytes().iter().copied().collect::<Vec<_>>();
+        let mut bytes = input
+            .vocab
+            .relevant_bytes()
+            .iter()
+            .copied()
+            .collect::<Vec<_>>();
         bytes.sort_unstable();
         bytes
     } else {
@@ -4505,16 +4581,18 @@ fn build_binary_impl(input: BuildInput<'_>, allow_finite_switch: bool) -> Option
     let projected_started = Instant::now();
     let broad_id_map_p2_direct = input.id_map_only
         && input.partition_label == "p2"
-        && input.active_terminals.iter().filter(|&&active| active).count() >= 64;
+        && input
+            .active_terminals
+            .iter()
+            .filter(|&&active| active)
+            .count()
+            >= 64;
     let direct_terminal_residuals = std::env::var("LEXQUOT_L1_DIRECT_TERMINAL_RESIDUALS")
         .map(|value| {
             let value = value.trim();
             value.is_empty() || (value != "0" && !value.eq_ignore_ascii_case("false"))
         })
-        .unwrap_or(
-            input.id_map_only
-                && (input.partition_label == "p1" || broad_id_map_p2_direct),
-        )
+        .unwrap_or(input.id_map_only && (input.partition_label == "p1" || broad_id_map_p2_direct))
         || std::env::var("LEXQUOT_L1_DIRECT_TERMINAL_RESIDUALS_PARTITIONS")
             .ok()
             .is_some_and(|scope| {
@@ -4550,7 +4628,11 @@ fn build_binary_impl(input: BuildInput<'_>, allow_finite_switch: bool) -> Option
                 .representative_original_ids
                 .iter()
                 .map(|&raw| {
-                    assert_ne!(raw, u32::MAX, "L1 state quotient has an unmapped representative");
+                    assert_ne!(
+                        raw,
+                        u32::MAX,
+                        "L1 state quotient has an unmapped representative"
+                    );
                     projected.root_sparse_row(raw)
                 })
                 .collect::<Vec<_>>();
@@ -4600,7 +4682,9 @@ fn build_binary_impl(input: BuildInput<'_>, allow_finite_switch: bool) -> Option
         // Report a typed failure rather than retrying or returning partial data.
         lexquot_invariant::__private::fail_compilation_resource_limit(format!(
             "projected L1 partition {:?} has {} states, exceeding LEXQUOT_L1_SINGLE_MAX_STATES={}",
-            input.partition_label, projected.configs.len(), limit,
+            input.partition_label,
+            projected.configs.len(),
+            limit,
         ));
     }
     let expanded = if direct_selected {
@@ -4666,7 +4750,10 @@ fn build_binary_impl(input: BuildInput<'_>, allow_finite_switch: bool) -> Option
         })
         .unwrap_or(true);
     let (mut minimized, grouped_minimize) = if direct_selected {
-        (minimize_direct_residual_union(&projected.transitions, &bytes), None)
+        (
+            minimize_direct_residual_union(&projected.transitions, &bytes),
+            None,
+        )
     } else if use_grouped_minimize {
         let (minimized, stats) = minimize_grouped(&projected.transitions, &groups, &bytes);
         (minimized, Some(stats))
@@ -4701,7 +4788,11 @@ fn build_binary_impl(input: BuildInput<'_>, allow_finite_switch: bool) -> Option
         };
     }
 
-    let mut used_classes = roots.entries.iter().map(|&(_, state)| state).collect::<Vec<_>>();
+    let mut used_classes = roots
+        .entries
+        .iter()
+        .map(|&(_, state)| state)
+        .collect::<Vec<_>>();
     used_classes.sort_unstable();
     used_classes.dedup();
     let mut used_index = vec![usize::MAX; minimized.state_count];
@@ -4717,7 +4808,10 @@ fn build_binary_impl(input: BuildInput<'_>, allow_finite_switch: bool) -> Option
             let scope = scope.trim();
             scope.is_empty()
                 || scope == "1"
-                || scope.split(',').map(str::trim).any(|label| label == input.partition_label)
+                || scope
+                    .split(',')
+                    .map(str::trim)
+                    .any(|label| label == input.partition_label)
         });
     let mut reverse = ReverseSubsets::new(
         &minimized.columns,
@@ -4885,7 +4979,8 @@ fn build_binary_impl(input: BuildInput<'_>, allow_finite_switch: bool) -> Option
         root_to_state_class[root_class] = class;
     }
 
-    let mut sparse_rows = Vec::<Vec<(u32, u32)>>::with_capacity(state_class_representative_root.len());
+    let mut sparse_rows =
+        Vec::<Vec<(u32, u32)>>::with_capacity(state_class_representative_root.len());
     let mut sparse_pair_visits = 0usize;
     let mut group_state = vec![DEAD; group_count];
     for &root_class in &state_class_representative_root {
@@ -4944,7 +5039,12 @@ fn build_binary_impl(input: BuildInput<'_>, allow_finite_switch: bool) -> Option
     let finish_ms = finish_started.elapsed().as_secs_f64() * 1000.0;
     if std::env::var_os("LEXQUOT_PROFILE_L1_IMPLEMENTATIONS").is_some() {
         let live_edges = projected.transitions.iter().map(Vec::len).sum::<usize>();
-        let max_live_edges = projected.transitions.iter().map(Vec::len).max().unwrap_or(0);
+        let max_live_edges = projected
+            .transitions
+            .iter()
+            .map(Vec::len)
+            .max()
+            .unwrap_or(0);
         let singleton_configs = projected
             .configs
             .iter()
@@ -4971,15 +5071,33 @@ fn build_binary_impl(input: BuildInput<'_>, allow_finite_switch: bool) -> Option
             bytes.len(),
             minimized.columns.len(),
             minimized.rounds,
-            grouped_minimize.as_ref().map_or(0, |stats| stats.local_states),
-            grouped_minimize.as_ref().map_or(0, |stats| stats.local_rounds),
-            grouped_minimize.as_ref().map_or(0.0, |stats| stats.local_ms),
-            grouped_minimize.as_ref().map_or(0.0, |stats| stats.local_max_group_ms),
-            grouped_minimize.as_ref().map_or(0.0, |stats| stats.global_ms),
-            grouped_minimize.as_ref().map_or(0, |stats| stats.dag_groups),
-            grouped_minimize.as_ref().map_or(0, |stats| stats.dag_states),
-            grouped_minimize.as_ref().map_or(0, |stats| stats.hopcroft_groups),
-            grouped_minimize.as_ref().map_or(0, |stats| stats.hopcroft_states),
+            grouped_minimize
+                .as_ref()
+                .map_or(0, |stats| stats.local_states),
+            grouped_minimize
+                .as_ref()
+                .map_or(0, |stats| stats.local_rounds),
+            grouped_minimize
+                .as_ref()
+                .map_or(0.0, |stats| stats.local_ms),
+            grouped_minimize
+                .as_ref()
+                .map_or(0.0, |stats| stats.local_max_group_ms),
+            grouped_minimize
+                .as_ref()
+                .map_or(0.0, |stats| stats.global_ms),
+            grouped_minimize
+                .as_ref()
+                .map_or(0, |stats| stats.dag_groups),
+            grouped_minimize
+                .as_ref()
+                .map_or(0, |stats| stats.dag_states),
+            grouped_minimize
+                .as_ref()
+                .map_or(0, |stats| stats.hopcroft_groups),
+            grouped_minimize
+                .as_ref()
+                .map_or(0, |stats| stats.hopcroft_states),
             projected.configs.len(),
             live_edges,
             max_live_edges,
@@ -5025,7 +5143,6 @@ fn build_binary_impl(input: BuildInput<'_>, allow_finite_switch: bool) -> Option
     Some(finished.artifact)
 }
 
-
 #[derive(Clone, Debug)]
 pub struct L1VocabEquivResult {
     pub vocab_map: ManyToOneIdMap,
@@ -5045,7 +5162,11 @@ pub struct L1VocabEquivResult {
 }
 
 pub fn build_projected_vocab_equivalence(input: BuildInput<'_>) -> Option<L1VocabEquivResult> {
-    let active_terminals = input.active_terminals.iter().filter(|&&active| active).count();
+    let active_terminals = input
+        .active_terminals
+        .iter()
+        .filter(|&&active| active)
+        .count();
     // Vocab-only equivalence has a different cost model from Static: there is
     // no downstream DWA construction to amortize an expensive finite scan.
     // Wide L1 families benefit from the finite trie scan; narrow families can
@@ -5069,10 +5190,8 @@ pub fn build_projected_vocab_equivalence(input: BuildInput<'_>) -> Option<L1Voca
         // that handoff. Use the existing cheap root-membership probe to keep
         // genuinely explosive residuals on the finite path.
         const VOCAB_ONLY_P2_RESIDUAL_MAX_ROOT_MEMBERSHIPS: usize = 20_000;
-        let (memberships, exceeded) = projected_root_membership_precheck(
-            input,
-            VOCAB_ONLY_P2_RESIDUAL_MAX_ROOT_MEMBERSHIPS,
-        );
+        let (memberships, exceeded) =
+            projected_root_membership_precheck(input, VOCAB_ONLY_P2_RESIDUAL_MAX_ROOT_MEMBERSHIPS);
         if !exceeded && memberships <= VOCAB_ONLY_P2_RESIDUAL_MAX_ROOT_MEMBERSHIPS {
             return build_binary_vocab_only_forced(input);
         }
@@ -5090,16 +5209,14 @@ pub fn build_projected_vocab_equivalence(input: BuildInput<'_>) -> Option<L1Voca
     // residual kernel and let the vocab-only residual/finite safety ceiling
     // decide whether the resulting machine is still economical. Static keeps
     // its separate, lower crossover in `residual_finite_switch_states`.
-    let direct_terminal_residuals_available = input
-        .tokenizer
-        .terminal_residual_coordinates()
-        .is_some()
-        && std::env::var("LEXQUOT_L1_DIRECT_TERMINAL_RESIDUALS")
-            .map(|value| {
-                let value = value.trim();
-                value.is_empty() || (value != "0" && !value.eq_ignore_ascii_case("false"))
-            })
-            .unwrap_or(true);
+    let direct_terminal_residuals_available =
+        input.tokenizer.terminal_residual_coordinates().is_some()
+            && std::env::var("LEXQUOT_L1_DIRECT_TERMINAL_RESIDUALS")
+                .map(|value| {
+                    let value = value.trim();
+                    value.is_empty() || (value != "0" && !value.eq_ignore_ascii_case("false"))
+                })
+                .unwrap_or(true);
     let force_p5_residual = input.partition_label == "p5"
         && (direct_terminal_residuals_available
             || std::env::var("LEXQUOT_VOCAB_P5_FORCE_RESIDUAL")
@@ -5185,13 +5302,27 @@ fn build_finite_projected_vocab_only(
         && matches!(input.partition_label, "p1" | "p2");
     let (profile_run_budget, pair_visit_budget) = if adaptive_budget {
         let (runs_env, pairs_env, default_pairs) = if input.partition_label == "p1" {
-            ("LEXQUOT_P1_FINITE_MAX_PROFILE_RUNS", "LEXQUOT_P1_FINITE_MAX_PAIR_VISITS", 50_000)
+            (
+                "LEXQUOT_P1_FINITE_MAX_PROFILE_RUNS",
+                "LEXQUOT_P1_FINITE_MAX_PAIR_VISITS",
+                50_000,
+            )
         } else {
-            ("LEXQUOT_P2_FINITE_MAX_PROFILE_RUNS", "LEXQUOT_P2_FINITE_MAX_PAIR_VISITS", 150_000)
+            (
+                "LEXQUOT_P2_FINITE_MAX_PROFILE_RUNS",
+                "LEXQUOT_P2_FINITE_MAX_PAIR_VISITS",
+                150_000,
+            )
         };
         (
-            std::env::var(runs_env).ok().and_then(|v| v.parse().ok()).unwrap_or(2_048),
-            std::env::var(pairs_env).ok().and_then(|v| v.parse().ok()).unwrap_or(default_pairs),
+            std::env::var(runs_env)
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(2_048),
+            std::env::var(pairs_env)
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(default_pairs),
         )
     } else {
         (usize::MAX, usize::MAX)
@@ -5264,12 +5395,18 @@ fn build_finite_projected_vocab_only(
                     &mut uniform,
                     &mut uniform_token_count,
                 );
-                (Arc::<[ProfileRun]>::from(values), visits, uniform, uniform_token_count)
+                (
+                    Arc::<[ProfileRun]>::from(values),
+                    visits,
+                    uniform,
+                    uniform_token_count,
+                )
             })
             .collect::<Vec<_>>();
 
         let mut key_profile = vec![0u32; keys.len()];
-        for (key, (values, visits, uniform, uniform_token_count)) in results.into_iter().enumerate() {
+        for (key, (values, visits, uniform, uniform_token_count)) in results.into_iter().enumerate()
+        {
             pair_visits += visits;
             uniform_subtrees += uniform;
             uniform_tokens += uniform_token_count;
@@ -5394,14 +5531,13 @@ fn build_finite_projected_vocab_only(
     let preordered_vocab = preordered_vocab_map_enabled(input)
         .then(|| finite_vocab.original_order.as_deref())
         .flatten();
-    let token_classes = token_class.iter().copied().max().map_or(0, |class| class + 1);
+    let token_classes = token_class
+        .iter()
+        .copied()
+        .max()
+        .map_or(0, |class| class + 1);
     let vocab_tokens = if input.id_map_only {
-        common::grouped_vocab_id_map(
-            aliases,
-            &token_class,
-            token_classes,
-            preordered_vocab,
-        )
+        common::grouped_vocab_id_map(aliases, &token_class, token_classes, preordered_vocab)
     } else {
         common::direct_vocab_id_map(
             input.vocab.max_token_id(),
@@ -5481,10 +5617,7 @@ fn build_binary_vocab_only_with_switch(
     let prep_cpu_ms = 0.0;
 
     let scan_timer = Instant::now();
-    let direct_terminal_residuals = input
-        .tokenizer
-        .terminal_residual_coordinates()
-        .is_some()
+    let direct_terminal_residuals = input.tokenizer.terminal_residual_coordinates().is_some()
         && std::env::var("LEXQUOT_L1_DIRECT_TERMINAL_RESIDUALS")
             .map(|value| {
                 let value = value.trim();
@@ -5512,7 +5645,11 @@ fn build_binary_vocab_only_with_switch(
                 .representative_original_ids
                 .iter()
                 .map(|&raw| {
-                    assert_ne!(raw, u32::MAX, "L1 state quotient has an unmapped representative");
+                    assert_ne!(
+                        raw,
+                        u32::MAX,
+                        "L1 state quotient has an unmapped representative"
+                    );
                     projected.root_sparse_row(raw)
                 })
                 .collect::<Vec<_>>();
@@ -5588,14 +5725,18 @@ fn build_binary_vocab_only_with_switch(
         .unwrap_or(true);
     let minimize_started = profile.then(Instant::now);
     let (mut minimized, _) = if direct_selected {
-        (minimize_direct_residual_union(&projected.transitions, &bytes), None)
+        (
+            minimize_direct_residual_union(&projected.transitions, &bytes),
+            None,
+        )
     } else if use_grouped_minimize {
         let (minimized, stats) = minimize_grouped(&projected.transitions, &groups, &bytes);
         (minimized, Some(stats))
     } else {
         (minimize(&projected.transitions, &bytes), None)
     };
-    let minimize_ms = minimize_started.map_or(0.0, |started| started.elapsed().as_secs_f64() * 1000.0);
+    let minimize_ms =
+        minimize_started.map_or(0.0, |started| started.elapsed().as_secs_f64() * 1000.0);
     let reverse_setup_started = profile.then(Instant::now);
     for &byte in vocab_bytes {
         minimized.byte_class[byte as usize] =
@@ -5603,7 +5744,12 @@ fn build_binary_vocab_only_with_switch(
     }
     roots.remap_states(&minimized.classes);
     let force_source_scan = false;
-    let mut reverse = ReverseSubsets::new(&minimized.columns, &minimized.byte_class, minimized.state_count, force_source_scan);
+    let mut reverse = ReverseSubsets::new(
+        &minimized.columns,
+        &minimized.byte_class,
+        minimized.state_count,
+        force_source_scan,
+    );
     let mut final_subset_to_class = Vec::<u32>::new();
     let mut class_subsets = Vec::<u32>::new();
     let mut token_class = vec![0u32; aliases.len()];
@@ -5682,40 +5828,42 @@ fn build_binary_vocab_only_with_switch(
                 );
             }
         }
-            (None, None) => {
-                for (token_index, token) in tokens.iter().enumerate() {
-                    let subset = reverse.token(token);
-                    token_class[token_index] = intern_dense_subset_class(
-                        subset,
-                        &mut final_subset_to_class,
-                        &mut class_subsets,
-                    );
-                }
+        (None, None) => {
+            for (token_index, token) in tokens.iter().enumerate() {
+                let subset = reverse.token(token);
+                token_class[token_index] = intern_dense_subset_class(
+                    subset,
+                    &mut final_subset_to_class,
+                    &mut class_subsets,
+                );
             }
         }
+    }
     let token_ms = token_started.map_or(0.0, |started| started.elapsed().as_secs_f64() * 1000.0);
     let scan_wall_ms = scan_timer.elapsed().as_secs_f64() * 1000.0;
     if profile {
         eprintln!(
             "[glrmask/profile][l1_residual_projected_scan] partition={} direct_selected={} direct_ms={direct_ms:.3} expand_ms={expand_ms:.3} minimize_ms={minimize_ms:.3} reverse_setup_ms={reverse_setup_ms:.3} token_ms={token_ms:.3} scan_ms={scan_wall_ms:.3}",
-            input.partition_label,
-            direct_selected,
+            input.partition_label, direct_selected,
         );
     }
     let scan_cpu_ms = 0.0;
 
     let compact_timer = Instant::now();
     let preordered_vocab = preordered_vocab_map_enabled(input)
-        .then(|| prepared_vocab.as_ref().and_then(|p| p.original_order.as_deref()))
+        .then(|| {
+            prepared_vocab
+                .as_ref()
+                .and_then(|p| p.original_order.as_deref())
+        })
         .flatten();
-    let token_classes = token_class.iter().copied().max().map_or(0, |class| class + 1);
+    let token_classes = token_class
+        .iter()
+        .copied()
+        .max()
+        .map_or(0, |class| class + 1);
     let vocab_tokens = if input.id_map_only {
-        common::grouped_vocab_id_map(
-            aliases,
-            &token_class,
-            token_classes,
-            preordered_vocab,
-        )
+        common::grouped_vocab_id_map(aliases, &token_class, token_classes, preordered_vocab)
     } else {
         common::direct_vocab_id_map(
             input.vocab.max_token_id(),
@@ -5747,7 +5895,6 @@ fn build_binary_vocab_only_with_switch(
         kernel: "residual_projected",
     })
 }
-
 
 #[cfg(test)]
 mod finite_run_sweep_tests {
@@ -5826,7 +5973,6 @@ mod finite_run_sweep_tests {
         }
     }
 
-
     #[test]
     fn run_sweep_matches_dense_token_vector_equivalence() {
         const ROWS: usize = 17;
@@ -5901,50 +6047,111 @@ pub(crate) fn external_survivor_columns(
     budget: crate::Budget,
 ) -> Result<crate::residual::SurvivorColumns, crate::AnalysisError> {
     use crate::api::check_limit;
-    let alphabet = tokens.iter().flat_map(|t|t.iter().copied())
-        .collect::<std::collections::BTreeSet<_>>().into_iter().collect::<Vec<_>>();
-    let mut ranks = [u16::MAX;256];
-    for (rank,&byte) in alphabet.iter().enumerate() {ranks[byte as usize]=rank as u16;}
-    let transitions = raw_transitions.iter().map(|row| {
-        row.iter().filter_map(|&(b,t)| (ranks[b as usize]!=u16::MAX).then_some((ranks[b as usize] as u8,t))).collect::<Vec<_>>()
-    }).collect::<Vec<_>>();
+    let alphabet = tokens
+        .iter()
+        .flat_map(|t| t.iter().copied())
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+    let mut ranks = [u16::MAX; 256];
+    for (rank, &byte) in alphabet.iter().enumerate() {
+        ranks[byte as usize] = rank as u16;
+    }
+    let transitions = raw_transitions
+        .iter()
+        .map(|row| {
+            row.iter()
+                .filter_map(|&(b, t)| {
+                    (ranks[b as usize] != u16::MAX).then_some((ranks[b as usize] as u8, t))
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
     let cells = transitions.len().saturating_mul(alphabet.len());
-    check_limit("residual transition cells", cells as u64, budget.max_table_cells as u64)?;
+    check_limit(
+        "residual transition cells",
+        cells as u64,
+        budget.max_table_cells as u64,
+    )?;
     let minimize_started = Instant::now();
     let minimized = if do_minimize && !transitions.is_empty() {
-        minimize_direct_residual_union(&transitions,&alphabet)
+        minimize_direct_residual_union(&transitions, &alphabet)
     } else {
-        let mut byte_class=[0u8;256];
-        for (rank,&byte) in alphabet.iter().enumerate(){byte_class[byte as usize]=rank as u8;}
-        let mut columns=vec![vec![DEAD;transitions.len()].into_boxed_slice();alphabet.len()];
-        for (source,row) in transitions.iter().enumerate(){for &(symbol,target) in row {columns[symbol as usize][source]=target;}}
-        Minimized{classes:(0..transitions.len() as u32).collect(),columns,byte_class,state_count:transitions.len(),rounds:0}
-    };
-    let minimize_ms=minimize_started.elapsed().as_secs_f64()*1000.0;
-    let reverse_started=Instant::now();
-    let mut reverse=ReverseSubsets::new(&minimized.columns,&minimized.byte_class,minimized.state_count,false);
-    let mut final_ids=FxHashMap::<u32,usize>::default();
-    let mut subsets=Vec::new();
-    let mut token_subsets=Vec::with_capacity(tokens.len());
-    let mut byte_steps=0u64;
-    for token in tokens {
-        let mut subset=0u32;
-        for &byte in token.iter().rev() {
-            subset=reverse.prepend(subset,byte);
-            byte_steps=byte_steps.saturating_add(1);
-            check_limit("reverse byte/predecessor steps",byte_steps.saturating_add(reverse.predecessor_visits as u64),budget.max_byte_steps)?;
-            check_limit("reverse subset states",reverse.sets.len() as u64,budget.max_canonical_nodes as u64)?;
-            check_limit("reverse subset words",reverse.sets.len().saturating_mul(minimized.state_count.div_ceil(64)) as u64,budget.max_table_cells as u64)?;
+        let mut byte_class = [0u8; 256];
+        for (rank, &byte) in alphabet.iter().enumerate() {
+            byte_class[byte as usize] = rank as u8;
         }
-        let next=subsets.len();
-        let index=*final_ids.entry(subset).or_insert_with(||{subsets.push(Arc::clone(&reverse.sets[subset as usize]));next});
+        let mut columns = vec![vec![DEAD; transitions.len()].into_boxed_slice(); alphabet.len()];
+        for (source, row) in transitions.iter().enumerate() {
+            for &(symbol, target) in row {
+                columns[symbol as usize][source] = target;
+            }
+        }
+        Minimized {
+            classes: (0..transitions.len() as u32).collect(),
+            columns,
+            byte_class,
+            state_count: transitions.len(),
+            rounds: 0,
+        }
+    };
+    let minimize_ms = minimize_started.elapsed().as_secs_f64() * 1000.0;
+    let reverse_started = Instant::now();
+    let mut reverse = ReverseSubsets::new(
+        &minimized.columns,
+        &minimized.byte_class,
+        minimized.state_count,
+        false,
+    );
+    let mut final_ids = FxHashMap::<u32, usize>::default();
+    let mut subsets = Vec::new();
+    let mut token_subsets = Vec::with_capacity(tokens.len());
+    let mut byte_steps = 0u64;
+    for token in tokens {
+        let mut subset = 0u32;
+        for &byte in token.iter().rev() {
+            subset = reverse.prepend(subset, byte);
+            byte_steps = byte_steps.saturating_add(1);
+            check_limit(
+                "reverse byte/predecessor steps",
+                byte_steps.saturating_add(reverse.predecessor_visits as u64),
+                budget.max_byte_steps,
+            )?;
+            check_limit(
+                "reverse subset states",
+                reverse.sets.len() as u64,
+                budget.max_canonical_nodes as u64,
+            )?;
+            check_limit(
+                "reverse subset words",
+                reverse
+                    .sets
+                    .len()
+                    .saturating_mul(minimized.state_count.div_ceil(64)) as u64,
+                budget.max_table_cells as u64,
+            )?;
+        }
+        let next = subsets.len();
+        let index = *final_ids.entry(subset).or_insert_with(|| {
+            subsets.push(Arc::clone(&reverse.sets[subset as usize]));
+            next
+        });
         token_subsets.push(index);
     }
-    let stats=crate::residual::ResidualStats {
-        source_states:transitions.len(),minimized_states:minimized.state_count,
-        reverse_states:reverse.sets.len(),reverse_transitions:reverse.computed_transitions,
-        predecessor_visits:reverse.predecessor_visits,minimize_ms,
-        reverse_ms:reverse_started.elapsed().as_secs_f64()*1000.0,..Default::default()
+    let stats = crate::residual::ResidualStats {
+        source_states: transitions.len(),
+        minimized_states: minimized.state_count,
+        reverse_states: reverse.sets.len(),
+        reverse_transitions: reverse.computed_transitions,
+        predecessor_visits: reverse.predecessor_visits,
+        minimize_ms,
+        reverse_ms: reverse_started.elapsed().as_secs_f64() * 1000.0,
+        ..Default::default()
     };
-    Ok(crate::residual::SurvivorColumns{state_classes:minimized.classes,token_subsets,subsets,stats})
+    Ok(crate::residual::SurvivorColumns {
+        state_classes: minimized.classes,
+        token_subsets,
+        subsets,
+        stats,
+    })
 }

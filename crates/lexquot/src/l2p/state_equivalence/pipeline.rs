@@ -389,7 +389,6 @@ fn record_max_length_profile(
     });
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -404,7 +403,6 @@ mod tests {
                 })
             })
     }
-
 
     #[test]
     fn deterministic_restricted_observation_carries_exact_right_congruence() {
@@ -448,19 +446,19 @@ mod tests {
         }
         assert!(profile.relevant_byte_congruence_certified);
         assert!(profile.max_length_congruence_certified);
-        assert!(TokenizerView::new(&tokenizer)
-            .is_relevant_byte_congruent(&state_map, &relevant_bytes));
+        assert!(
+            TokenizerView::new(&tokenizer).is_relevant_byte_congruent(&state_map, &relevant_bytes)
+        );
     }
     #[test]
     fn stable_epsilon_restricted_observation_certifies_bounded_max_length() {
         let tokenizer = arbitrary_epsilon_l1_test_tokenizer();
-        let vocab = Vocab::new(
-            vec![
-                (0, b"a".to_vec()),
-                (1, b"b".to_vec()),
-                (2, b"ab".to_vec()),
-                (3, b"ba".to_vec()),
-            ]);
+        let vocab = Vocab::new(vec![
+            (0, b"a".to_vec()),
+            (1, b"b".to_vec()),
+            (2, b"ab".to_vec()),
+            (3, b"ba".to_vec()),
+        ]);
         let restricted_only = StateEquivalencePipelineConfig {
             passes: vec![StateEquivalencePassKind::RestrictedObservation],
         };
@@ -497,10 +495,7 @@ mod tests {
         assert!(same_partition(&restricted_map, &certified_map));
         assert!(profile.max_length_congruence_certified);
         assert_eq!(profile.max_length_state_equiv_ms, 0.0);
-        assert_eq!(
-            profile.max_length_reps,
-            profile.restricted_observation_reps
-        );
+        assert_eq!(profile.max_length_reps, profile.restricted_observation_reps);
         assert_eq!(
             profile
                 .pass_profiles

@@ -290,8 +290,7 @@ impl Vocab {
     /// exact-only token domain.
     #[doc(hidden)]
     pub fn same_model_vocab(&self, other: &Vocab) -> bool {
-        self.entries == other.entries
-            && self.exact_only_token_ids == other.exact_only_token_ids
+        self.entries == other.entries && self.exact_only_token_ids == other.exact_only_token_ids
     }
 
     /// Exact-only token IDs in ascending order.
@@ -383,8 +382,8 @@ pub(crate) mod vocab_prefix_tree;
 #[cfg(feature = "internal-api")]
 #[doc(hidden)]
 pub mod __private {
-    pub use super::derived_artifact::VocabDerivedArtifact;
     pub use super::Vocab;
+    pub use super::derived_artifact::VocabDerivedArtifact;
 
     pub mod vocab_prefix_tree {
         pub use super::super::vocab_prefix_tree::*;

@@ -5,8 +5,8 @@ use crate::Vocab;
 use crate::automata::lexer::tokenizer::Tokenizer;
 use crate::equiv_types::ManyToOneIdMap;
 
-use super::build_state_map_from_subset_representatives;
 use super::super::compat::TokenizerView;
+use super::build_state_map_from_subset_representatives;
 
 const MISSING_BLOCK: u32 = u32::MAX;
 
@@ -81,7 +81,12 @@ fn build_filtered_finalizer_labels(
 ) -> Vec<Vec<usize>> {
     (0..tokenizer.num_states() as usize)
         .into_par_iter()
-        .map(|state| filtered_terminals(tokenizer.matched_terminals_iter(state as u32), active_groups))
+        .map(|state| {
+            filtered_terminals(
+                tokenizer.matched_terminals_iter(state as u32),
+                active_groups,
+            )
+        })
         .collect()
 }
 
@@ -92,7 +97,10 @@ fn build_filtered_possible_future_labels(
     (0..tokenizer.num_states() as usize)
         .into_par_iter()
         .map(|state| {
-            filtered_terminals(tokenizer.possible_future_terminals_iter(state as u32), active_groups)
+            filtered_terminals(
+                tokenizer.possible_future_terminals_iter(state as u32),
+                active_groups,
+            )
         })
         .collect()
 }
@@ -329,11 +337,14 @@ fn refine_once_sorted(
 }
 
 fn build_full_mapping_from_blocks(blocks: &[u32], num_states: usize) -> Vec<usize> {
-    let mut rep_for_block = vec![usize::MAX; blocks
-        .iter()
-        .copied()
-        .max()
-        .map_or(0, |value| value as usize + 1)];
+    let mut rep_for_block = vec![
+        usize::MAX;
+        blocks
+            .iter()
+            .copied()
+            .max()
+            .map_or(0, |value| value as usize + 1)
+    ];
     let mut mapping = vec![0usize; num_states];
 
     for (state, &block) in blocks.iter().enumerate() {
@@ -348,10 +359,7 @@ fn build_full_mapping_from_blocks(blocks: &[u32], num_states: usize) -> Vec<usiz
 }
 
 fn build_subset_mapping(states: &[usize], full_mapping: &[usize]) -> Vec<usize> {
-    states
-        .iter()
-        .map(|&state| full_mapping[state])
-        .collect()
+    states.iter().map(|&state| full_mapping[state]).collect()
 }
 
 fn compute_kbounded_partition(
@@ -435,7 +443,6 @@ fn stable_refinement_blocks(
     blocks
 }
 
-
 /// Refine an already-formed total partition until it is a right congruence on
 /// `active_bytes`, while preserving that partition as a lower bound.
 pub fn stable_refinement_from_initial_blocks(
@@ -446,9 +453,11 @@ pub fn stable_refinement_from_initial_blocks(
 ) -> Vec<u32> {
     let n = tokenizer.num_states() as usize;
     assert_eq!(initial_blocks.len(), n);
-    assert!(initial_blocks
-        .iter()
-        .all(|&block| (block as usize) < initial_block_count));
+    assert!(
+        initial_blocks
+            .iter()
+            .all(|&block| (block as usize) < initial_block_count)
+    );
     if initial_block_count == n || active_bytes.is_empty() {
         return initial_blocks.to_vec();
     }
@@ -477,7 +486,6 @@ pub fn stable_refinement_from_initial_blocks(
         }
     }
 }
-
 
 pub fn compute_statistic(vocab: &Vocab) -> MaxLengthStatistic {
     let mut relevant_bytes = [false; 256];

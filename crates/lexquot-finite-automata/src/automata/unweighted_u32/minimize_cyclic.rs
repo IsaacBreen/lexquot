@@ -182,13 +182,7 @@ pub fn minimize_cyclic(dfa: &DFA) -> DFA {
 
     // Refine partitions with composite signatures.
     loop {
-        let new_class_of = refine_partition(
-            dfa,
-            &class_of,
-            dead,
-            &dense_to_state,
-            &state_to_dense,
-        );
+        let new_class_of = refine_partition(dfa, &class_of, dead, &dense_to_state, &state_to_dense);
 
         if new_class_of == class_of {
             break;
@@ -283,13 +277,7 @@ mod tests {
         }
 
         let dead_class = class_of[dead];
-        build_minimized_cyclic_dfa(
-            dfa,
-            &state_to_dense,
-            &dense_to_state,
-            &class_of,
-            dead_class,
-        )
+        build_minimized_cyclic_dfa(dfa, &state_to_dense, &dense_to_state, &class_of, dead_class)
     }
 
     fn generated_dfa(seed: u64) -> DFA {

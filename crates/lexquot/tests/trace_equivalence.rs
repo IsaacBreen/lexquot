@@ -5,7 +5,7 @@ use lexquot::trace::{
     EndpointPolicy, PrepareOptions, PreparedTrace, TraceAlgorithm, TraceAnalysis, TraceBudget,
     TraceDfa,
 };
-use lexquot::{parse_regex, Vocab};
+use lexquot::{Vocab, parse_regex};
 use std::collections::{BTreeSet, HashMap};
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -297,11 +297,12 @@ fn disconnected_live_roots_are_preserved_and_product_scope_change_is_rejected() 
     let vocab = Vocab::new(vec![(1, b"a".to_vec()), (2, b"b".to_vec())]);
     let projected = p.request(&vocab).analyze().unwrap();
     assert_ne!(projected.token_class(1), projected.token_class(2));
-    assert!(p
-        .request(&vocab)
-        .algorithm(TraceAlgorithm::Product)
-        .analyze()
-        .is_err());
+    assert!(
+        p.request(&vocab)
+            .algorithm(TraceAlgorithm::Product)
+            .analyze()
+            .is_err()
+    );
 }
 
 #[test]

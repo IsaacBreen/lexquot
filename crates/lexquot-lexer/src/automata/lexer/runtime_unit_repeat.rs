@@ -17,10 +17,7 @@ const VIRTUAL_STATE_LIMIT: u32 = 1 << 31;
 /// fits beside `physical_state_count` materialized tokenizer states. Dynamic
 /// compilation uses this before mutating the tokenizer so an oversized unit
 /// lane can be routed to the exact repeat-product runtime instead.
-pub(super) fn virtual_unit_repeat_state_ids_fit(
-    max: usize,
-    physical_state_count: u32,
-) -> bool {
+pub(super) fn virtual_unit_repeat_state_ids_fit(max: usize, physical_state_count: u32) -> bool {
     let Ok(virtual_count) = u32::try_from(max) else {
         return false;
     };
@@ -71,10 +68,19 @@ impl VirtualZeroMinUnitRepeatMaskProjection {
     /// Stable construction metadata; excludes mutable runtime history.
     #[doc(hidden)]
     pub fn observation_descriptor(&self) -> Vec<u8> {
-        bincode::serialize(&[self.full_min, self.full_max, self.full_physical_state_count,
-            self.mask_state_count, self.deep_lower_state, self.lower_start, self.lower_offset,
-            self.interior_state, self.upper_start, self.upper_offset])
-            .expect("fixed unit-repeat descriptor serialization")
+        bincode::serialize(&[
+            self.full_min,
+            self.full_max,
+            self.full_physical_state_count,
+            self.mask_state_count,
+            self.deep_lower_state,
+            self.lower_start,
+            self.lower_offset,
+            self.interior_state,
+            self.upper_start,
+            self.upper_offset,
+        ])
+        .expect("fixed unit-repeat descriptor serialization")
     }
 
     pub(super) fn new(
@@ -174,9 +180,8 @@ impl VirtualZeroMinUnitRepeatMaskProjection {
             counts[self.deep_lower_state as usize] = self.lower_start.saturating_sub(1) as usize;
         }
         if self.interior_state != u32::MAX {
-            counts[self.interior_state as usize] = self
-                .upper_start
-                .saturating_sub(self.full_min.max(1)) as usize;
+            counts[self.interior_state as usize] =
+                self.upper_start.saturating_sub(self.full_min.max(1)) as usize;
         }
         counts
     }
@@ -387,7 +392,11 @@ impl VirtualZeroMinUnitRepeatRuntime {
         let Some(consumed) = self.consumed(state) else {
             return Some(&self.dead);
         };
-        Some(if consumed < self.max { &self.live } else { &self.dead })
+        Some(if consumed < self.max {
+            &self.live
+        } else {
+            &self.dead
+        })
     }
 
     pub(super) fn transition_target(&self, state: u32) -> Option<u32> {
@@ -400,7 +409,7 @@ impl VirtualZeroMinUnitRepeatRuntime {
 
 #[cfg(test)]
 mod tests {
-    use super::{virtual_unit_repeat_state_ids_fit, VIRTUAL_STATE_LIMIT};
+    use super::{VIRTUAL_STATE_LIMIT, virtual_unit_repeat_state_ids_fit};
 
     #[test]
     fn virtual_unit_repeat_state_id_boundary_is_exact() {

@@ -2,13 +2,16 @@
 //!
 //! This is the actual production projected-residual algorithm. Terminal labels
 //! remain on root mappings and results, not on the shared residual state machine.
+use crate::{InternalIdMap, Lexer, ManyToOneIdMap, Tokenizer, Vocab};
 use std::sync::Arc;
-use crate::{Tokenizer, Vocab, Lexer, InternalIdMap, ManyToOneIdMap};
 mod common;
 mod projected;
 pub(crate) use projected::external_survivor_columns;
 mod support;
-pub use projected::{build, build_projected_vocab_equivalence, prepare_finite_vocab_projection, should_use_projected, L1VocabEquivResult};
+pub use projected::{
+    L1VocabEquivResult, build, build_projected_vocab_equivalence, prepare_finite_vocab_projection,
+    should_use_projected,
+};
 
 /// Optional byte-sorted parent vocabulary, borrowed without copying its tokens.
 #[derive(Clone, Copy)]
@@ -56,26 +59,54 @@ pub struct PreparedVocabulary {
 }
 impl crate::vocab::VocabDerivedArtifact for PreparedVocabulary {}
 pub fn seed_vocabulary_order(vocab: &Vocab, entries: Arc<[(u32, Arc<[u8]>)]>, ids: Arc<[u32]>) {
-    if vocab.vocab_derived_cache_get::<PreparedVocabulary>().is_none() {
+    if vocab
+        .vocab_derived_cache_get::<PreparedVocabulary>()
+        .is_none()
+    {
         vocab.vocab_derived_cache_set(Arc::new(PreparedVocabulary {
-            token_entries_sorted: entries, original_to_internal: ids,
+            token_entries_sorted: entries,
+            original_to_internal: ids,
         }));
     }
 }
 pub fn prepared_l1_identity_vocab_order(vocab: &Vocab) -> Arc<PreparedVocabulary> {
-    if let Some(cached) = vocab.vocab_derived_cache_get::<PreparedVocabulary>() { return cached; }
-    let mut entries = vocab.entries_map().iter()
-        .map(|(&id,b)| (id, Arc::<[u8]>::from(b.clone()))).collect::<Vec<_>>();
-    entries.sort_unstable_by(|(a,x),(b,y)| x.first().cmp(&y.first()).then(x.cmp(y)).then(a.cmp(b)));
+    if let Some(cached) = vocab.vocab_derived_cache_get::<PreparedVocabulary>() {
+        return cached;
+    }
+    let mut entries = vocab
+        .entries_map()
+        .iter()
+        .map(|(&id, b)| (id, Arc::<[u8]>::from(b.clone())))
+        .collect::<Vec<_>>();
+    entries
+        .sort_unstable_by(|(a, x), (b, y)| x.first().cmp(&y.first()).then(x.cmp(y)).then(a.cmp(b)));
     let mut ids = vec![u32::MAX; vocab.max_token_id() as usize + 1];
-    for (i,(id,_)) in entries.iter().enumerate() { ids[*id as usize] = i as u32; }
-    let result = Arc::new(PreparedVocabulary { token_entries_sorted: entries.into(), original_to_internal: ids.into() });
+    for (i, (id, _)) in entries.iter().enumerate() {
+        ids[*id as usize] = i as u32;
+    }
+    let result = Arc::new(PreparedVocabulary {
+        token_entries_sorted: entries.into(),
+        original_to_internal: ids.into(),
+    });
     vocab.vocab_derived_cache_set(Arc::clone(&result));
     result
 }
-fn collect_active_terminal_signature(tokenizer: &Tokenizer, state: u32, active: &[bool]) -> Vec<u32> {
-    let mut signature = tokenizer.matched_terminals_iter(state)
-        .chain(tokenizer.tokens_accessible_from_state(state).iter().map(|t| t as u32))
-        .filter(|&t| active.get(t as usize).copied().unwrap_or(false)).collect::<Vec<_>>();
-    signature.sort_unstable(); signature.dedup(); signature
+fn collect_active_terminal_signature(
+    tokenizer: &Tokenizer,
+    state: u32,
+    active: &[bool],
+) -> Vec<u32> {
+    let mut signature = tokenizer
+        .matched_terminals_iter(state)
+        .chain(
+            tokenizer
+                .tokens_accessible_from_state(state)
+                .iter()
+                .map(|t| t as u32),
+        )
+        .filter(|&t| active.get(t as usize).copied().unwrap_or(false))
+        .collect::<Vec<_>>();
+    signature.sort_unstable();
+    signature.dedup();
+    signature
 }

@@ -2,7 +2,7 @@
 //! A node has at most one edge per terminal. Union merges child *languages*,
 //! rather than treating an arbitrary nondeterministic DAG shape as canonical.
 
-use super::{limit, TraceBudget};
+use super::{TraceBudget, limit};
 use crate::AnalysisError;
 use rustc_hash::FxHashMap;
 use std::sync::Arc;
@@ -201,11 +201,7 @@ impl Languages {
 }
 
 fn ordered(a: u32, b: u32) -> (u32, u32) {
-    if a <= b {
-        (a, b)
-    } else {
-        (b, a)
-    }
+    if a <= b { (a, b) } else { (b, a) }
 }
 
 #[cfg(test)]

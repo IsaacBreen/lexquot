@@ -2,17 +2,13 @@ use std::collections::BTreeMap;
 
 pub type Label = i32;
 
-#[derive(
-    Debug, Clone, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize,
-)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct DFAState {
     pub is_accepting: bool,
     pub transitions: BTreeMap<Label, u32>,
 }
 
-#[derive(
-    Debug, Clone, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize,
-)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct DFA {
     pub states: Vec<DFAState>,
     pub start_state: u32,
@@ -87,13 +83,22 @@ impl DFA {
 
 impl std::fmt::Display for DFA {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "DFA: {} states, start=State {}", self.states.len(), self.start_state)?;
+        writeln!(
+            f,
+            "DFA: {} states, start=State {}",
+            self.states.len(),
+            self.start_state
+        )?;
         for (state_id, state) in self.states.iter().enumerate() {
             if state.transitions.is_empty() && !state.is_accepting {
                 continue;
             }
 
-            let start_mark = if state_id as u32 == self.start_state { " [START]" } else { "" };
+            let start_mark = if state_id as u32 == self.start_state {
+                " [START]"
+            } else {
+                ""
+            };
             let accept_mark = if state.is_accepting { " [ACCEPT]" } else { "" };
             writeln!(f, "  State {state_id}{start_mark}{accept_mark}")?;
             for (label, target) in &state.transitions {
