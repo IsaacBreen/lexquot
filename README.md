@@ -6,6 +6,16 @@ LexQuot is an independently named Rust library and small workspace, extracted fr
 
 The main Rust package is [`lexquot`](crates/lexquot/README.md), with four support crates vendored into this workspace under `crates/`.
 
+## Grammar-aware vocabulary analysis
+
+For a specific grammar, use [`lexquot::grammar`](crates/lexquot/GRAMMAR_GUIDE.md).
+It retains the CFG, folds proved regular subgrammars, derives legal terminal
+successors, and computes representative-safe byte-language classes. A wholly
+regular grammar uses exact minimized-DFA token transformations. There is no
+GLRMask runtime, parser-table, or CFGzip dependency. The original flat-terminal
+`trace` API below remains available with its intentionally stronger all-CFG
+observation contract.
+
 ## Exact all-completion vocabulary analysis
 
 The additional `lexquot::trace` API computes collision-free vocabulary classes

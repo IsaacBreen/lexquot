@@ -122,3 +122,6 @@ pub use residual::{
 /// Exact all-completion trace observers. This API is distinct from the inherited
 /// L1/L2P latest-completion contract and computes vocabulary classes only.
 pub mod trace;
+
+/// Grammar-aware normalization and representative-safe vocabulary analysis.
+pub mod grammar;

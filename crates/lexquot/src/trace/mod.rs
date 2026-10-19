@@ -20,6 +20,8 @@
 
 mod automata;
 mod engine;
+/// Grammar-conditioned vocabulary equivalence; derives safe follow scopes from a CFG.
+pub mod grammar;
 mod language;
 
 pub use automata::{PreparedTrace, TraceDfa};

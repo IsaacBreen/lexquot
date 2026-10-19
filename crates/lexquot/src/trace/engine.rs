@@ -16,16 +16,16 @@ struct First {
     tail: u32,
 }
 
-struct Columns<T> {
-    values: Vec<Arc<[T]>>,
+pub(super) struct Columns<T> {
+    pub(super) values: Vec<Arc<[T]>>,
     ids: FxHashMap<Arc<[T]>, u32>,
-    transitions: FxHashMap<(u32, u16), u32>,
+    pub(super) transitions: FxHashMap<(u32, u16), u32>,
     width: usize,
     budget: TraceBudget,
 }
 
 impl<T: Eq + Hash> Columns<T> {
-    fn new(width: usize, budget: TraceBudget) -> Self {
+    pub(super) fn new(width: usize, budget: TraceBudget) -> Self {
         Self {
             values: Vec::new(),
             ids: FxHashMap::default(),
@@ -35,7 +35,7 @@ impl<T: Eq + Hash> Columns<T> {
         }
     }
 
-    fn intern(&mut self, column: Vec<T>) -> Result<u32, AnalysisError> {
+    pub(super) fn intern(&mut self, column: Vec<T>) -> Result<u32, AnalysisError> {
         debug_assert_eq!(column.len(), self.width);
         if let Some(&id) = self.ids.get(column.as_slice()) {
             return Ok(id);
@@ -57,7 +57,12 @@ impl<T: Eq + Hash> Columns<T> {
         Ok(id)
     }
 
-    fn cache(&mut self, source: u32, byte: u16, target: u32) -> Result<(), AnalysisError> {
+    pub(super) fn cache(
+        &mut self,
+        source: u32,
+        byte: u16,
+        target: u32,
+    ) -> Result<(), AnalysisError> {
         limit(
             "trace cached prepend transitions",
             self.transitions.len() + 1,
