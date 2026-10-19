@@ -76,3 +76,9 @@ The editable manuscript and experimental evidence are maintained in a **separate
 ## Provenance and license
 
 LexQuot's initial algorithms and support code were extracted from [GLRMask](https://github.com/IsaacBreen/glrmask), retaining the original copyright and dual-license terms. Its new Git history is independent. See [LICENSE-MIT](LICENSE-MIT), [LICENSE-APACHE](LICENSE-APACHE), and [PROVENANCE.md](PROVENANCE.md).
+
+For lossless next-token masks with **original-token commits**, use
+`prepared.analyze_masks(&vocab)`. It computes exact Boolean viability signatures
+for certified regular grammars, and a sufficient grammar-scoped mask relation
+otherwise. Keep `prepared.analyze(&vocab)` for representative substitution.
+The two contracts are intentionally distinct; see `crates/lexquot/GRAMMAR_GUIDE.md`.

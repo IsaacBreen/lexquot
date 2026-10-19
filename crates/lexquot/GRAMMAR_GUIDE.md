@@ -99,3 +99,50 @@ Preparation may be reused for other vocabularies. Every `analyze` call has fresh
 analysis caches. Timing comparisons should include normalization and engine
 preparation when reporting complete vocabulary construction, and disclose any
 external regex/grammar parsing or model-vocabulary setup.
+
+## Mask-only equivalence (original-token commits)
+
+`PreparedGrammar::analyze_masks(&vocab)` answers the weaker question needed to
+regenerate next-token masks: for every byte prefix `x`, token `u` has some valid
+completion after `x` exactly when token `v` does. The two completing suffixes
+may differ. `analyze` still supplies the stronger substitution-safe contract.
+
+For certified regular languages, `RegularDfaMasks` computes the exact coarsest
+static mask partition. Its signature is the vector of Boolean coaccessibility
+results after reading a token from every reachable DFA state. It is implemented
+as backward preimages of a live-state bitset, with byte-class transition caching
+and full structural equality. This is a vocabulary-only algorithm: the kernel
+does not compute a finite-vocabulary lexer-state quotient. In the remaining CFG,
+`GrammarScopedMasks` uses all completion-label paths but only the existence of
+an unfinished-terminal continuation. That relation is sufficient, not generally
+coarsest. Resource errors fail explicitly, not by silently dropping tokens.
+
+```rust
+use lexquot::{Vocab, parse_regex, trace::TraceDfa};
+use lexquot::grammar::{Dfa, Grammar, Options, Symbol};
+let terminal = TraceDfa::from_expression(&parse_regex("a0c|a1d", false))?;
+let g = Grammar { terminals: vec![Dfa::from(&terminal)],
+    rules: vec![vec![vec![Symbol::Terminal(0)]]], start: 0 };
+let prepared = g.prepare(Options::default())?;
+let vocab = Vocab::new(vec![(7, b"0".to_vec()), (19, b"1".to_vec())]);
+let masks = prepared.analyze_masks(&vocab)?;
+assert_eq!(masks.partition.token_class(7), masks.partition.token_class(19));
+let substitution = prepared.analyze(&vocab)?;
+assert_ne!(substitution.partition.token_class(7), substitution.partition.token_class(19));
+# Ok::<(), lexquot::AnalysisError>(())
+```
+
+Query one representative per class to get the current mask, and expand it to
+original model IDs. **Commit the original sampled token bytes**, never the mask
+representative, in both the grammar checker and model history. Query EOS from
+that actual checker state. This preserves the original masked sampler, not the
+unconstrained model conditioned on eventual grammatical completion. An engine
+with a representative-only commit API needs an adapter that supports raw bytes
+or original IDs before it can use this weaker mode. Finite completion budgets,
+semantic actions and tokenizer-restricted reachability are separate contracts.
+
+The mask equivalence is exact over all byte prefixes, not merely prefixes
+reachable from a particular finite vocabulary. Counts can be conservative for
+more restricted tokenization domains. `stats.signature_cells` counts stored
+64-bit words in `RegularDfaMasks`, versus 32-bit destinations in
+`RegularDfaActions`; compare storage in bytes, not those counters directly.

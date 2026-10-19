@@ -75,7 +75,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     let variant = args.get(4).map(String::as_str).unwrap_or("full");
     let mut opts = Options::default();
     match variant {
-        "full" => {}
+        "full" | "mask" => {}
+        "mask-no-cache" => opts.cache_transitions = false,
         "scope" => {
             opts.fold_regular = false;
             opts.regular_actions = false;
@@ -94,7 +95,11 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
     let started = Instant::now();
     let prepared = grammar.prepare(opts)?;
-    let result = prepared.analyze(&vocab)?;
+    let result = if variant.starts_with("mask") {
+        prepared.analyze_masks(&vocab)?
+    } else {
+        prepared.analyze(&vocab)?
+    };
     let whole = started.elapsed().as_secs_f64() * 1000.;
     let info = json!({"status":"ok","variant":variant,"algorithm":result.algorithm,"construction_ms":whole,"preparation_ms":result.preparation.total_ms,"analysis_ms":result.stats.analysis_ms,"nondead_classes":result.partition.nondead_class_count(),"including_dead_classes":result.partition.classes.len(),"dead_tokens":result.partition.dead_class.map(|c|result.partition.classes[c as usize].len()).unwrap_or(0),"token_count":result.partition.token_ids.len(),"preparation":result.preparation,"stats":result.stats,"contract":result.contract});
     fs::write(&args[3], serde_json::to_vec(&result)?)?;

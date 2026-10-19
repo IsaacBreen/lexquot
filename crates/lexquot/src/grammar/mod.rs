@@ -18,6 +18,7 @@
 mod actions;
 mod dfa;
 mod lower;
+mod masks;
 pub use crate::trace::grammar::Symbol;
 use crate::trace::grammar::{GrammarSpec, PreparedGrammarTrace, Production};
 use crate::trace::{PrepareOptions, PreparedTrace, TraceAnalysis, TraceBudget, TraceDfa};
@@ -158,6 +159,11 @@ impl From<TraceAnalysis> for TokenPartition {
 pub enum Algorithm {
     EmptyLanguage,
     RegularDfaActions,
+    /// Exact prefix-viability columns; original-token commits required.
+    RegularDfaMasks,
+    /// Grammar-conditioned completion paths with Boolean pending endpoints.
+    GrammarScopedMasks,
+    UniformFoldedMasks,
     GrammarScopedTrace,
     UniformFoldedTrace,
 }
@@ -258,6 +264,72 @@ impl PreparedGrammar {
     pub fn stats(&self) -> &PreparationStats {
         &self.stats
     }
+    /// Compute a static next-token mask partition for the supplied byte language.
+    ///
+    /// For a certified regular language this computes the COARSEST relation
+    /// that preserves viability at every byte prefix. For a nonregular CFG it
+    /// compares grammar-scoped completion paths with Boolean pending endpoints,
+    /// a sufficient mask relation. `algorithm` distinguishes the two:
+    /// no general-CFG optimality claim is made. EOS must be tested on the original checker state.
+    ///
+    /// Always commit the original sampled token bytes in both the grammar
+    /// checker and the model context. Do not commit these representatives.
+    pub fn analyze_masks(&self, vocab: &Vocab) -> Result<Analysis, AnalysisError> {
+        guard(
+            "grammar vocabulary entries",
+            vocab.len(),
+            self.options.trace_budget.max_cells,
+        )?;
+        let (partition, mut stats, algorithm) = match &self.engine {
+            Engine::Regular(dfa) => {
+                let (p, s) = masks::analyze(
+                    dfa,
+                    vocab,
+                    self.options.trace_budget,
+                    self.options.cache_transitions,
+                )?;
+                (p, s, Algorithm::RegularDfaMasks)
+            }
+            Engine::Scoped(p) => {
+                let out = p.analyze_with(
+                    vocab,
+                    crate::trace::EndpointPolicy::Mask,
+                    self.options.cache_transitions,
+                    self.options.trace_budget,
+                )?;
+                let s = from_trace_stats(&out.partition.stats);
+                (out.partition.into(), s, Algorithm::GrammarScopedMasks)
+            }
+            Engine::Uniform(p) => {
+                let out = p
+                    .request(vocab)
+                    .endpoint(crate::trace::EndpointPolicy::Mask)
+                    .cache_transitions(self.options.cache_transitions)
+                    .budget(self.options.trace_budget)
+                    .analyze()?;
+                let s = from_trace_stats(&out.stats);
+                (out.into(), s, Algorithm::UniformFoldedMasks)
+            }
+            Engine::Empty => {
+                let mut out = self.analyze(vocab)?;
+                out.contract = "All ordinary nonempty tokens are dead for empty/epsilon-only language; commit ORIGINAL token bytes; EOS checked separately";
+                return Ok(out);
+            }
+        };
+        stats.construction_ms = self.stats.total_ms + stats.analysis_ms;
+        Ok(Analysis {
+            partition,
+            stats,
+            algorithm,
+            preparation: self.stats.clone(),
+            contract: if algorithm == Algorithm::RegularDfaMasks {
+                "Exact coarsest static prefix-viability partition over all byte prefixes of the supplied regular language; commit ORIGINAL token bytes, never mask representatives; EOS checked separately"
+            } else {
+                "Grammar-scoped sufficient prefix-viability partition for supplied CFG; not claimed coarsest; commit ORIGINAL token bytes, never mask representatives; EOS checked separately"
+            },
+        })
+    }
+
     pub fn analyze(&self, vocab: &Vocab) -> Result<Analysis, AnalysisError> {
         guard(
             "grammar vocabulary entries",
