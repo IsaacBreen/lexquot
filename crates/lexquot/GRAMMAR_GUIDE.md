@@ -62,7 +62,7 @@ DFA states is the two-sided syntactic congruence of that fixed regular language.
 Original spelling and token ID do not determine the classes, and different token
 lengths may merge when the grammar allows it.
 
-For a genuinely context-free remainder, `trace::grammar` derives legal adjacent
+When normalization leaves a context-free remainder, `trace::grammar` derives legal adjacent
 terminal pairs using productivity, reachability, nullable, FIRST and LAST sets.
 First-match coordinates combine a projected Boolean residual with its allowed
 successor scope. Subsequent completions retain their terminal labels and exact

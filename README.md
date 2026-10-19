@@ -71,7 +71,7 @@ This repository includes only LexQuot and its supporting libraries, not the GLRM
 
 ## Research
 
-The editable manuscript and experimental evidence are maintained in a **separate private repository** during author review. This repository contains no manuscript or unpublished experimental results. The reported lexical analysis has not undergone a measured CFGzip head-to-head, complete 9,558-schema sweep, or full-runtime benchmark qualification.
+The editable manuscript and experimental evidence are maintained in a **separate private repository** during author review. This repository contains no manuscript or unpublished experimental results. The examples provide reproducible grammar-aware and uniform-observer benchmarks. Scientific measurements are maintained separately during author review; vocabulary-construction timings do not imply an end-to-end model-serving speedup.
 
 ## Provenance and license
 
